@@ -1,0 +1,28 @@
+{
+  "name": "@deployforme/core",
+  "version": "1.0.2",
+  "description": "Framework-agnostic runtime module management kernel",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "keywords": ["deploy4me", "hot-reload", "module-loading", "zero-downtime"],
+  "author": "Hacı Mert Gökhan <hacimertgokhan@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/deployforme/deploy4me.git",
+    "directory": "packages/core"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "prepublishOnly": "pnpm build"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  }
+}

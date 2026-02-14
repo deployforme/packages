@@ -1,0 +1,25 @@
+{
+  "name": "express-example",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "dev:monitoring": "ts-node src/index-monitoring.ts",
+    "demo": "ts-node src/demo-zero-downtime.ts",
+    "build": "tsc && xcopy /E /I /Y src\\modules dist\\modules",
+    "start": "node dist/index.js",
+    "start:prod": "node dist/index-prod.js",
+    "start:monitoring": "node dist/index-monitoring.js"
+  },
+  "dependencies": {
+    "@deployforme/core": "workspace:*",
+    "@deployforme/adapter-express": "workspace:*",
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.0"
+  }
+}

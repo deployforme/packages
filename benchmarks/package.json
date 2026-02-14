@@ -1,0 +1,27 @@
+{
+  "name": "deploy4me-benchmarks",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "bench": "ts-node run-all.ts",
+    "bench:load": "ts-node load-performance.ts",
+    "bench:reload": "ts-node reload-performance.ts",
+    "bench:throughput": "ts-node throughput.ts",
+    "bench:memory": "ts-node memory-leak.ts",
+    "bench:stress": "ts-node stress-test.ts",
+    "bench:concurrent": "ts-node concurrent-reload.ts"
+  },
+  "dependencies": {
+    "@deploy4me/core": "workspace:*",
+    "@deploy4me/adapter-express": "workspace:*",
+    "express": "^4.18.2",
+    "autocannon": "^7.15.0",
+    "clinic": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.0"
+  }
+}

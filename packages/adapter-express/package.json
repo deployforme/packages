@@ -1,0 +1,35 @@
+{
+  "name": "@deployforme/adapter-express",
+  "version": "1.0.2",
+  "description": "Express adapter for Deploy4Me",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "keywords": ["deploy4me", "express", "adapter"],
+  "author": "Hacı Mert Gökhan <hacimertgokhan@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/deployforme/deploy4me.git",
+    "directory": "packages/adapter-express"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "prepublishOnly": "pnpm build"
+  },
+  "dependencies": {
+    "@deployforme/core": "^1.0.0"
+  },
+  "peerDependencies": {
+    "express": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "express": "^4.18.2",
+    "typescript": "^5.3.0"
+  }
+}
