@@ -4,12 +4,12 @@ NestJS adapter for Deploy4Me runtime module management system.
 
 ## Features
 
-- ✅ Full NestJS integration
-- 🔄 Dynamic route registration/unregistration
-- 📦 Automatic body parsing (built-in)
-- 🎯 Type-safe route definitions
-- 🛡️ Works with NestJS exception filters
-- 🚀 Compatible with Express and Fastify platforms
+- Full NestJS integration
+- Dynamic route registration/unregistration
+- Automatic body parsing (built-in)
+- Type-safe route definitions
+- Works with NestJS exception filters
+- Compatible with Express and Fastify platforms
 
 ## Installation
 

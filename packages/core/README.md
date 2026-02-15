@@ -4,12 +4,12 @@ Framework-agnostic runtime module management kernel for Node.js applications. En
 
 ## Features
 
-- 🔥 Hot-reload modules at runtime without downtime
-- 🔄 Automatic dependency tracking and cleanup
-- 📦 Framework-agnostic core (works with Express, NestJS, Fastify, etc.)
-- 🎯 Type-safe module definitions
-- 📊 Built-in monitoring and metrics
-- 🛡️ Graceful error handling and rollback
+- Hot-reload modules at runtime without downtime
+- Automatic dependency tracking and cleanup
+- Framework-agnostic core (works with Express, NestJS, Fastify, etc.)
+- Type-safe module definitions
+- Built-in monitoring and metrics
+- Graceful error handling and rollback
 
 ## Installation
 

@@ -12,5 +12,7 @@
     "test": {
       "dependsOn": ["build"]
     }
-  }
+  },
+  "globalDependencies": ["package.json"],
+  "globalEnv": ["NODE_ENV"]
 }

@@ -4,11 +4,11 @@ Express.js adapter for Deploy4Me runtime module management system.
 
 ## Features
 
-- ✅ Full Express.js integration
-- 🔄 Dynamic route registration/unregistration
-- 📦 Automatic body parsing
-- 🎯 Type-safe route definitions
-- 🛡️ Error handling middleware support
+- Full Express.js integration
+- Dynamic route registration/unregistration
+- Automatic body parsing
+- Type-safe route definitions
+- Error handling middleware support
 
 ## Installation
 
