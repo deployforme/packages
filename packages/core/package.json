@@ -1,10 +1,15 @@
 {
   "name": "@deployforme/core",
-  "version": "1.0.2",
+  "version": "1.0.5",
   "description": "Framework-agnostic runtime module management kernel",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "keywords": ["deploy4me", "hot-reload", "module-loading", "zero-downtime"],
+  "keywords": [
+    "deploy4me",
+    "hot-reload",
+    "module-loading",
+    "zero-downtime"
+  ],
   "author": "Hacı Mert Gökhan <hacimertgokhan@gmail.com>",
   "license": "MIT",
   "repository": {

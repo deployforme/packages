@@ -1,4 +1,4 @@
-import { HttpAdapter, RouteDefinition } from '@deploy4me/core';
+import { HttpAdapter, RouteDefinition } from '@deployforme/core';
 import { Application, Router, Request, Response, NextFunction } from 'express';
 
 export class ExpressAdapter implements HttpAdapter {

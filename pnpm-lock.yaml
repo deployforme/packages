@@ -17,10 +17,10 @@ importers:
 
   benchmarks:
     dependencies:
-      '@deploy4me/adapter-express':
+      '@deployforme/adapter-express':
         specifier: workspace:*
         version: link:../packages/adapter-express
-      '@deploy4me/core':
+      '@deployforme/core':
         specifier: workspace:*
         version: link:../packages/core
       autocannon:
@@ -48,10 +48,10 @@ importers:
 
   examples/express-app:
     dependencies:
-      '@deploy4me/adapter-express':
+      '@deployforme/adapter-express':
         specifier: workspace:*
         version: link:../../packages/adapter-express
-      '@deploy4me/core':
+      '@deployforme/core':
         specifier: workspace:*
         version: link:../../packages/core
       express:
@@ -73,10 +73,10 @@ importers:
 
   examples/nest-app:
     dependencies:
-      '@deploy4me/adapter-nest':
+      '@deployforme/adapter-nest':
         specifier: workspace:*
         version: link:../../packages/adapter-nest
-      '@deploy4me/core':
+      '@deployforme/core':
         specifier: workspace:*
         version: link:../../packages/core
       '@nestjs/common':
@@ -107,9 +107,9 @@ importers:
 
   packages/adapter-express:
     dependencies:
-      '@deploy4me/core':
-        specifier: workspace:*
-        version: link:../core
+      '@deployforme/core':
+        specifier: ^1.0.0
+        version: 1.0.3
     devDependencies:
       '@types/express':
         specifier: ^4.17.21
@@ -123,9 +123,9 @@ importers:
 
   packages/adapter-nest:
     dependencies:
-      '@deploy4me/core':
-        specifier: workspace:*
-        version: link:../core
+      '@deployforme/core':
+        specifier: ^1.0.0
+        version: 1.0.3
     devDependencies:
       '@nestjs/common':
         specifier: ^10.0.0
@@ -133,6 +133,9 @@ importers:
       '@nestjs/core':
         specifier: ^10.0.0
         version: 10.4.22(@nestjs/common@10.4.22(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@10.4.22)(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.33
       typescript:
         specifier: ^5.3.0
         version: 5.9.3
@@ -189,6 +192,9 @@ packages:
   '@cspotcode/source-map-support@0.8.1':
     resolution: {integrity: sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw==}
     engines: {node: '>=12'}
+
+  '@deployforme/core@1.0.3':
+    resolution: {integrity: sha512-7SjwsbTI/6AWum5/a39xR/XQrVqidKZkpTKkwJ5tA/oHgHIAApxPqmYeJ9hCTbiH3aTaqWH2xHjnB6Ssge4CNA==}
 
   '@jridgewell/resolve-uri@3.1.2':
     resolution: {integrity: sha512-bRISgCIjP20/tbWSPWMEi54QVPRZExkuD9lJL+UIxUKtwVJA8wW1Trb1jMs1RFXo1CBTNZ/5hpC9QvmKWdopKw==}
@@ -3075,6 +3081,8 @@ snapshots:
   '@cspotcode/source-map-support@0.8.1':
     dependencies:
       '@jridgewell/trace-mapping': 0.3.9
+
+  '@deployforme/core@1.0.3': {}
 
   '@jridgewell/resolve-uri@3.1.2': {}
 

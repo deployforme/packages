@@ -3,7 +3,7 @@
   "version": "1.0.1",
   "description": "Zero-downtime runtime module management for Node.js",
   "keywords": ["deploy", "hot-reload", "zero-downtime", "module-loading", "runtime"],
-  "author": "Your Name <your.email@example.com>",
+  "author": "Hacı Mert Gökhan <hacimertgokhan@gmail.com>",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -23,6 +23,9 @@
     "build": "turbo run build",
     "dev": "turbo run dev",
     "test": "turbo run test",
+    "version:patch": "node scripts/bump-version.js patch",
+    "version:minor": "node scripts/bump-version.js minor",
+    "version:major": "node scripts/bump-version.js major",
     "publish:core": "cd packages/core && npm publish --access public",
     "publish:adapter-express": "cd packages/adapter-express && npm publish --access public",
     "publish:adapter-nest": "cd packages/adapter-nest && npm publish --access public",

@@ -12,8 +12,8 @@
     "bench:concurrent": "ts-node concurrent-reload.ts"
   },
   "dependencies": {
-    "@deploy4me/core": "workspace:*",
-    "@deploy4me/adapter-express": "workspace:*",
+    "@deployforme/core": "workspace:*",
+    "@deployforme/adapter-express": "workspace:*",
     "express": "^4.18.2",
     "autocannon": "^7.15.0",
     "clinic": "^13.0.0"

@@ -1,10 +1,14 @@
 {
   "name": "@deployforme/adapter-express",
-  "version": "1.0.2",
+  "version": "1.0.5",
   "description": "Express adapter for Deploy4Me",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "keywords": ["deploy4me", "express", "adapter"],
+  "keywords": [
+    "deploy4me",
+    "express",
+    "adapter"
+  ],
   "author": "Hacı Mert Gökhan <hacimertgokhan@gmail.com>",
   "license": "MIT",
   "repository": {

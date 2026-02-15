@@ -22,6 +22,21 @@ module.exports = {
         return { id: req.params.id, name: 'User ' + req.params.id };
       }
     });
+
+    context.http.registerRoute({
+      id: 'user-create',
+      method: 'POST',
+      path: '/users',
+      handler: async (req, res) => {
+        const { email, password } = req.body || {};
+        
+        return { 
+          message: 'User created',
+          email,
+          id: Math.floor(Math.random() * 1000)
+        };
+      }
+    });
   },
 
   dispose() {
