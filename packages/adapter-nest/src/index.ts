@@ -1,77 +1,27 @@
-import { HttpAdapter, RouteDefinition } from '@deployforme/core';
-import { INestApplication } from '@nestjs/common';
+import type { HttpAdapter, RouteDefinition } from '@hivelet/core';
+import { ExpressAdapter } from '@hivelet/adapter-express';
+import type { INestApplication } from '@nestjs/common';
+import type { Request, Response } from 'express';
 
-export class NestAdapter implements HttpAdapter {
-  private app: INestApplication;
-  private routes = new Map<string, { method: string; path: string }>();
+export class NestExpressAdapter implements HttpAdapter<Request, Response> {
+  private readonly adapter: ExpressAdapter;
 
   constructor(app: INestApplication) {
-    this.app = app;
+    const httpAdapter = app.getHttpAdapter();
+    if (httpAdapter.getType() !== 'express') {
+      throw new TypeError('NestExpressAdapter requires @nestjs/platform-express');
+    }
+
+    this.adapter = new ExpressAdapter(httpAdapter.getInstance());
   }
 
-  registerRoute(definition: RouteDefinition): void {
-    const { id, method, path, handler } = definition;
-    
-    const httpAdapter = this.app.getHttpAdapter();
-    const instance = httpAdapter.getInstance();
-
-    const methodLower = method.toLowerCase() as 'get' | 'post' | 'put' | 'delete' | 'patch';
-    
-    instance[methodLower](path, async (req: any, res: any, next: any) => {
-      try {
-        // Parse body if not already parsed
-        if (!req.body && ['post', 'put', 'patch'].includes(methodLower)) {
-          await this.parseBody(req);
-        }
-        
-        const result = await handler(req, res);
-        if (result !== undefined && !res.headersSent) {
-          res.json(result);
-        }
-      } catch (error) {
-        next(error);
-      }
-    });
-
-    this.routes.set(id, { method, path });
-  }
-
-  private async parseBody(req: any): Promise<void> {
-    if (req.body) return;
-
-    const chunks: Buffer[] = [];
-    for await (const chunk of req) {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    }
-    
-    const rawBody = Buffer.concat(chunks).toString('utf8');
-    
-    try {
-      req.body = rawBody ? JSON.parse(rawBody) : {};
-    } catch (error) {
-      req.body = {};
-    }
+  registerRoute(definition: RouteDefinition<Request, Response>): void {
+    this.adapter.registerRoute(definition);
   }
 
   unregisterRoute(id: string): void {
-    const route = this.routes.get(id);
-    if (!route) return;
-
-    const httpAdapter = this.app.getHttpAdapter();
-    const instance = httpAdapter.getInstance();
-    
-    // Remove from Express/Fastify stack
-    const stack = (instance._router as any)?.stack;
-    if (stack) {
-      const routeIndex = stack.findIndex((layer: any) => 
-        layer.route?.path === route.path && 
-        layer.route?.methods[route.method.toLowerCase()]
-      );
-      if (routeIndex > -1) {
-        stack.splice(routeIndex, 1);
-      }
-    }
-
-    this.routes.delete(id);
+    this.adapter.unregisterRoute(id);
   }
 }
+
+export { NestExpressAdapter as NestAdapter };

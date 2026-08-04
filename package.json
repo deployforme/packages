@@ -1,33 +1,45 @@
 {
-  "name": "@deployforme/deploy4me",
+  "name": "@hivelet/hivelet",
   "version": "1.0.1",
-  "description": "Zero-downtime runtime module management for Node.js",
-  "keywords": ["deploy", "hot-reload", "zero-downtime", "module-loading", "runtime"],
+  "description": "Safe runtime module management for modern Node.js applications",
+  "keywords": [
+    "hivelet",
+    "hot-reload",
+    "module-loading",
+    "runtime",
+    "zero-downtime"
+  ],
   "author": "Hacı Mert Gökhan <hacimertgokhan@gmail.com>",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/deployforme/deploy4me.git"
+    "url": "https://github.com/hivelet/packages.git"
   },
   "bugs": {
-    "url": "https://github.com/deployforme/deploy4me/issues"
+    "url": "https://github.com/hivelet/packages/issues"
   },
-  "homepage": "https://github.com/deployforme/deploy4me#readme",
+  "homepage": "https://github.com/hivelet/packages#readme",
   "private": false,
   "packageManager": "pnpm@10.26.0",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "examples/*",
+    "benchmarks"
   ],
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "version:patch": "node scripts/bump-version.js patch",
     "version:minor": "node scripts/bump-version.js minor",
     "version:major": "node scripts/bump-version.js major",
-    "publish:core": "cd packages/core && npm publish --access public",
-    "publish:adapter-express": "cd packages/adapter-express && npm publish --access public",
-    "publish:adapter-nest": "cd packages/adapter-nest && npm publish --access public",
+    "docs:serve": "node scripts/serve-docs.cjs serve",
+    "docs:build": "node scripts/build-docs.cjs",
+    "publish:core": "pnpm --dir packages/core publish --access public",
+    "publish:adapter-express": "pnpm --dir packages/adapter-express publish --access public",
+    "publish:adapter-nest": "pnpm --dir packages/adapter-nest publish --access public",
     "publish:all": "pnpm build && pnpm publish:core && pnpm publish:adapter-express && pnpm publish:adapter-nest"
   },
   "devDependencies": {

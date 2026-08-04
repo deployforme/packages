@@ -1,160 +1,126 @@
-# @deployforme/adapter-express
+# @hivelet/adapter-express
 
-Express.js adapter for Deploy4Me runtime module management system.
+Express adapter for Hivelet. Maps `context.http.registerRoute` to a live Express `Router` so modules can be loaded, reloaded, and unloaded at runtime.
 
 ## Features
 
-- Full Express.js integration
-- Dynamic route registration/unregistration
-- Automatic body parsing
-- Type-safe route definitions
-- Error handling middleware support
+- Dynamic Express route registration and unregistration
+- Per-adapter router swap for atomic reloads
+- Body parsing stays with your Express middleware (`app.use(express.json())`, etc.)
+- Typed `Request`/`Response` end-to-end
 
-## Installation
+## Install
 
 ```bash
-npm install @deployforme/core @deployforme/adapter-express express
-# or
-pnpm add @deployforme/core @deployforme/adapter-express express
+pnpm add @hivelet/core @hivelet/adapter-express express
 ```
 
-## Quick Start
+## Quick start
 
-```typescript
+```ts
 import express from 'express';
-import { Kernel, ModuleLoader, createRuntimeContext } from '@deployforme/core';
-import { ExpressAdapter } from '@deployforme/adapter-express';
+import { Kernel, createRuntimeContext } from '@hivelet/core';
+import { ExpressAdapter } from '@hivelet/adapter-express';
 
 const app = express();
-
-// Enable JSON body parsing
 app.use(express.json());
 
-// Create adapter and context
-const adapter = new ExpressAdapter(app);
-const context = createRuntimeContext(adapter);
+const kernel = new Kernel(createRuntimeContext(new ExpressAdapter(app)));
 
-// Initialize kernel and loader
-const kernel = new Kernel(context);
-const loader = new ModuleLoader(kernel);
+await kernel.load('./modules/user.module.js');
+await kernel.load('./modules/product.module.js');
 
-// Load modules
-await loader.loadModule('./modules/user.module.js');
-await loader.loadModule('./modules/product.module.js');
-
-// Start server
-app.listen(3000, () => {
-  console.log('Server running on http://localhost:3000');
-});
+app.listen(3000);
 ```
 
-## Module Example
+## Module example
 
-```javascript
+```js
+// user.module.js
 module.exports = {
   name: 'user',
   version: '1.0.0',
-  
   register(context) {
-    // GET endpoint
     context.http.registerRoute({
       id: 'user-list',
       method: 'GET',
       path: '/users',
-      handler: async (req, res) => {
-        return { users: ['Alice', 'Bob', 'Charlie'] };
-      }
+      handler: async () => ({ users: ['Alice', 'Bob', 'Charlie'] })
     });
 
-    // POST endpoint with body parsing
     context.http.registerRoute({
       id: 'user-create',
       method: 'POST',
       path: '/users',
-      handler: async (req, res) => {
-        const { name, email } = req.body;
-        return { 
-          message: 'User created',
-          user: { name, email, id: Date.now() }
-        };
-      }
+      handler: async (req) => ({
+        id: Date.now(),
+        name: req.body?.name
+      })
     });
 
-    // Dynamic route parameters
     context.http.registerRoute({
       id: 'user-get',
       method: 'GET',
       path: '/users/:id',
-      handler: async (req, res) => {
-        return { 
-          id: req.params.id,
-          name: 'User ' + req.params.id 
-        };
-      }
+      handler: async (req) => ({ id: req.params.id, name: 'User ' + req.params.id })
     });
   },
-  
-  dispose() {
-    console.log('User module disposed');
-  }
+  dispose() {}
 };
 ```
 
-## Hot Reload Example
+A handler's return value is sent as JSON. Throw to delegate to Express error middleware.
 
-```typescript
-// Initial load
-await loader.loadModule('./modules/user.module.js');
+## Hot reload
 
-// Make changes to user.module.js...
-
-// Reload without downtime
-await loader.reloadModule('user');
-// Old routes are removed, new routes are registered
-// Zero downtime!
+```ts
+await kernel.load('./modules/user.module.js');
+// edit user.module.js ...
+await kernel.reload('./modules/user.module.js');
 ```
 
-## API Reference
+The adapter rebuilds its internal router and swaps it in atomically — pending requests finish on the old router, new requests hit the new one.
 
-### ExpressAdapter
+## API
 
-```typescript
-class ExpressAdapter implements HttpAdapter {
-  constructor(app: Application);
-  
+### `ExpressAdapter`
+
+```ts
+new ExpressAdapter(app: express.Application);
+
+interface HttpAdapter {
   registerRoute(definition: RouteDefinition): void;
   unregisterRoute(id: string): void;
 }
 ```
 
-### Route Definition
+### `RouteDefinition`
 
-```typescript
+```ts
 interface RouteDefinition {
-  id: string;              // Unique route identifier
-  method: HttpMethod;      // GET, POST, PUT, DELETE, PATCH
-  path: string;            // Express route path
-  handler: Function;       // Async route handler
+  readonly id: string;          // unique per module
+  readonly method: HttpMethod;  // GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS
+  readonly path: string;        // absolute, must start with /
+  readonly handler: (req, res) => unknown | Promise<unknown>;
 }
 ```
 
-## Middleware Support
+## Middleware
 
-Express middleware works seamlessly:
+Standard Express middleware is applied to the host app before the adapter:
 
-```typescript
+```ts
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors());
 
-// Your modules will have access to parsed body, CORS, etc.
+// modules run after the middleware chain
 ```
 
-## Error Handling
+Error middleware works the same way:
 
-```typescript
+```ts
 app.use((err, req, res, next) => {
-  console.error(err);
   res.status(500).json({ error: 'Internal Server Error' });
 });
 ```

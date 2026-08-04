@@ -1,146 +1,57 @@
-# Deploy4Me Benchmarks
+# @hivelet/benchmarks
 
-Comprehensive performance testing suite for Deploy4Me.
+Performance suite for the Hivelet kernel and `@hivelet/adapter-express`.
 
-## Available Benchmarks
+## Scripts
 
-### 1. Module Load Performance
-Tests module loading across different sizes (5-1000 routes).
+| Command | What it measures |
+|---------|------------------|
+| `pnpm bench:load` | Module load latency across sizes (5-1000 routes) |
+| `pnpm bench:reload` | 1000 hot-reload cycles, P95/P99 latency |
+| `pnpm bench:concurrent` | Parallel reloads (5/10/20 concurrent) |
+| `pnpm bench:throughput` | Sequential and concurrent RPS over loaded modules |
+| `pnpm bench:memory` | 1000 reload cycles, RSS/heap deltas |
+| `pnpm bench:stress` | 50 modules, ~1000 RPS, continuous reloads |
+| `pnpm bench` | Runs all of the above in sequence |
+
+## Targets
+
+- Load P99 < 10ms
+- Reload P99 < 20ms
+- Success rate > 99.9%
+- Memory growth < 5KB per reload
+- Throughput > 100 loads/sec
+
+If a number drifts outside these bands, treat it as a regression and investigate before merging.
+
+## Custom benchmark
+
+```ts
+import express from 'express';
+import { Kernel, createRuntimeContext } from '@hivelet/core';
+import { ExpressAdapter } from '@hivelet/adapter-express';
+
+const app = express();
+const kernel = new Kernel(createRuntimeContext(new ExpressAdapter(app)));
+
+const start = process.hrtime.bigint();
+await kernel.load('./module.js');
+const end = process.hrtime.bigint();
+
+console.log(`load: ${Number(end - start) / 1_000_000}ms`);
+```
+
+## Memory benchmark
+
+The memory benchmark benefits from an explicit GC pass between samples:
 
 ```bash
-pnpm bench:load
+node --expose-gc -r ts-node/register memory-leak.ts
 ```
 
-**Measures:**
-- Average load time
-- P95/P99 latency
-- Throughput (loads/sec)
-
-### 2. Hot Reload Performance
-Tests 1000 consecutive reload cycles.
-
-```bash
-pnpm bench:reload
-```
-
-**Measures:**
-- Reload consistency
-- Performance degradation over time
-- Memory stability
-
-### 3. Concurrent Reload
-Tests parallel module reloads (5, 10, 20 concurrent).
-
-```bash
-pnpm bench:concurrent
-```
-
-**Measures:**
-- Concurrent operation handling
-- Race condition detection
-- Scalability
-
-### 4. Request Throughput
-Tests HTTP request handling with loaded modules.
-
-```bash
-pnpm bench:throughput
-```
-
-**Measures:**
-- Sequential vs concurrent RPS
-- Latency under load
-- Deploy4Me overhead
-
-### 5. Stress Test
-Extreme load test: 50 modules, 1000 RPS, continuous reloads.
-
-```bash
-pnpm bench:stress
-```
-
-**Measures:**
-- System stability
-- Success rate under pressure
-- Failure modes
-
-### 6. Memory Leak Detection
-Tests 1000 reload cycles with 1MB module data.
-
-```bash
-pnpm bench:memory
-```
-
-**Measures:**
-- Memory growth per reload
-- Leak detection
-- Long-running stability
-
-## Running All Benchmarks
-
-```bash
-pnpm bench
-```
-
-This runs all benchmarks sequentially and generates a comprehensive report.
-
-## Interpreting Results
-
-### Good Performance Indicators
-- ✅ Load time <10ms P99
-- ✅ Success rate >99.9%
-- ✅ Memory growth <5KB/reload
-- ✅ Throughput >100 loads/sec
-
-### Warning Signs
-- ⚠️ Load time >50ms P99
-- ⚠️ Success rate <99%
-- ⚠️ Memory growth >100KB/reload
-- ⚠️ Throughput <50 loads/sec
-
-## Custom Benchmarks
-
-Create custom benchmarks by following the pattern:
-
-```typescript
-import { Kernel, createRuntimeContext } from '@deploy4me/core';
-import { ExpressAdapter } from '@deploy4me/adapter-express';
-
-async function myBenchmark() {
-  // Setup
-  const app = express();
-  const adapter = new ExpressAdapter(app);
-  const kernel = new Kernel(createRuntimeContext(adapter));
-
-  // Test
-  const start = process.hrtime.bigint();
-  await kernel.load('./module.js');
-  const end = process.hrtime.bigint();
-
-  // Report
-  console.log(`Time: ${Number(end - start) / 1_000_000}ms`);
-}
-```
-
-## CI/CD Integration
-
-Run benchmarks in CI to detect performance regressions:
+## CI
 
 ```yaml
-- name: Run Benchmarks
-  run: pnpm --filter deploy4me-benchmarks bench
-  
-- name: Check Performance
-  run: |
-    # Fail if P99 > 20ms
-    # Fail if success rate < 99%
+- name: Benchmarks
+  run: pnpm --filter @hivelet/benchmarks bench
 ```
-
-## Contributing
-
-When adding features, ensure benchmarks pass:
-
-1. Run existing benchmarks
-2. Add new benchmarks for new features
-3. Document performance characteristics
-4. Update PERFORMANCE.md with results

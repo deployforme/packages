@@ -1,31 +1,31 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { Kernel, createRuntimeContext } from '@deploy4me/core';
-import { NestAdapter } from '@deploy4me/adapter-nest';
-import * as path from 'path';
+import { Kernel, createRuntimeContext } from '@hivelet/core';
+import { NestExpressAdapter } from '@hivelet/adapter-nest';
+import type { Request, Response } from 'express';
+import * as path from 'node:path';
+import { HiveletRegistry } from './hivelet.registry';
 
-async function bootstrap() {
+async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
-  
-  // Initialize Deploy4Me with monitoring enabled
-  const adapter = new NestAdapter(app);
-  const context = createRuntimeContext(adapter);
-  const kernel = new Kernel(context, {
-    liveRunnerActions: true,  // Dashboard'u aktif et
-    port: 5000,               // Dashboard sabit port
-    host: 'localhost'
+  const registry = app.get(HiveletRegistry);
+
+  const kernel = new Kernel(createRuntimeContext(new NestExpressAdapter(app)), {
+    dashboard: { enabled: true, host: '127.0.0.1', port: 5000 }
   });
+  registry.set(kernel);
 
-  // Store kernel in app for controllers to access
-  (app as any).deploy4meKernel = kernel;
-
-  // Load initial module
+  await kernel.start();
   await kernel.load(path.join(__dirname, 'modules', 'user.module.js'));
 
   await app.listen(3000);
   console.log('NestJS app running on http://localhost:3000');
   console.log('Admin: http://localhost:3000/admin/modules');
+  console.log('Dashboard: http://127.0.0.1:5000/');
 }
 
-bootstrap();
+bootstrap().catch(error => {
+  console.error(error);
+  process.exit(1);
+});

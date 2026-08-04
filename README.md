@@ -1,117 +1,133 @@
-  # Deploy4Me
+# Hivelet
 
-  <div align="center">
+<div align="center">
 
-  **Enterprise-Grade Runtime Module Management for Node.js**
+**Runtime module management for Node.js**
 
-  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-  [![Node.js Version](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen)](https://nodejs.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen)](https://nodejs.org)
 
-  *Zero-downtime deployments • Hot module reloading • Framework agnostic • Production ready*
+*Zero-downtime hot reload • Framework agnostic • Production ready*
 
-  </div>
+</div>
 
-  ---
+---
 
-  Deploy4Me enables runtime module loading, hot-reloading, and versioning in monolithic Node.js applications without framework lock-in.
+Hivelet loads, reloads, and unloads modules at runtime in a running Node.js process. No restarts, no rebuilds of the host app, no framework lock-in.
 
-  ## Why Deploy4Me?
+## Why Hivelet?
 
-  Traditional deployment requires full application restart, causing downtime and slow iteration cycles. Deploy4Me solves this with runtime module management.
+Traditional deploys restart the whole process. Hivelet replaces routes and module implementations in place while the host keeps serving traffic.
 
-  | Approach | Deployment Time | Downtime | Rollback |
-  |----------|-----------------|----------|----------|
-  | **Traditional** | 30-120 seconds | Yes | Slow |
-  | **Deploy4Me** | <5ms | Zero | Instant |
+| Approach | Deploy time | Downtime | Rollback |
+|----------|-------------|----------|----------|
+| Traditional | 30-120s | yes | slow |
+| Hivelet | single module | none | instant |
 
-  ## Key Features
+## Features
 
-  - **Hot Reload** - Sub-5ms module reloading without server restart
-  - **Framework Agnostic** - Works with Express, NestJS, Fastify, and more
-  - **Isolated Lifecycle** - Independent module management and versioning
-  - **High Performance** - 400+ module loads/sec, 99.9% reliability
-  - **Zero Dependencies** - Core has no framework dependencies
-  - **Live Monitoring** - Real-time dashboard for build tracking and module status
+- Hot reload of CommonJS modules at runtime
+- Exclusive operation queue — no torn writes
+- Route ownership checks across modules
+- Built-in monitoring dashboard (`/api/state`, `/health`, UI at `/`)
+- Framework-agnostic core with Express and NestJS adapters
+- Strict, zero-dependency TypeScript types
 
-  ## Quick Start
+## Install
 
-  ```bash
-  # Install
-  npm install @deployforme/core @deployforme/adapter-express
+```bash
+pnpm add @hivelet/core @hivelet/adapter-express
+```
 
-  # Create a module (user.module.js)
-  module.exports = {
-    name: 'user',
-    version: '1.0.0',
-    register(context) {
-      context.http.registerRoute({
-        id: 'user-list',
-        method: 'GET',
-        path: '/users',
-        handler: async () => ({ users: ['Alice', 'Bob'] })
-      });
-    }
-  };
+## Quick start
 
-  # Setup host (index.ts)
-  import express from 'express';
-  import { Kernel, createRuntimeContext } from '@deployforme/core';
-  import { ExpressAdapter } from '@deployforme/adapter-express';
+```js
+// user.module.js
+module.exports = {
+  name: 'user',
+  version: '1.0.0',
+  register(context) {
+    context.http.registerRoute({
+      id: 'user-list',
+      method: 'GET',
+      path: '/users',
+      handler: async () => ({ users: ['Alice', 'Bob'] })
+    });
+  }
+};
+```
 
-  const app = express();
-  const kernel = new Kernel(createRuntimeContext(new ExpressAdapter(app)));
-  await kernel.load('./user.module.js');
-  app.listen(3000);
+```ts
+// index.ts
+import express from 'express';
+import { Kernel, createRuntimeContext } from '@hivelet/core';
+import { ExpressAdapter } from '@hivelet/adapter-express';
 
-  # Hot reload on change
-  curl -X POST http://localhost:3000/admin/reload/user
-  ```
+const app = express();
+const kernel = new Kernel(createRuntimeContext(new ExpressAdapter(app)));
 
-  ## Packages
+await kernel.load('./user.module.js');
 
-  | Package | Description |
-  |---------|-------------|
-  | [@deployforme/core](./packages/core) | Framework-agnostic kernel |
-  | [@deployforme/adapter-express](./packages/adapter-express) | Express integration |
-  | [@deployforme/adapter-nest](./packages/adapter-nest) | NestJS integration |
+app.listen(3000);
+```
 
-  ## Architecture
+Reload a module without restarting the process:
 
-  ```
-  ┌─────────────────────────────────────┐
-  │  Host Application (Express/Nest)    │
-  └────────────────┬────────────────────┘
-                  │
-  ┌────────────────▼────────────────────┐
-  │       Deploy4Me Adapter             │
-  └────────────────┬────────────────────┘
-                  │
-  ┌────────────────▼────────────────────┐
-  │       Deploy4Me Kernel (Core)       │
-  │  • Module Registry                  │
-  │  • Lifecycle Management             │
-  │  • Route Orchestration              │
-  └────────────────┬────────────────────┘
-                  │
-  ┌────────────────▼────────────────────┐
-  │         Runtime Modules             │
-  └─────────────────────────────────────┘
-  ```
+```bash
+curl -X POST http://localhost:3000/admin/reload/user
+```
 
-  ## Performance
+## Monitoring dashboard
 
-  | Metric | Value |
-  |--------|-------|
-  | Reload Time | <5ms (P99) |
-  | Throughput | 400+ loads/sec |
-  | Reliability | 99.9% |
-  | Memory | <3KB/reload |
+```ts
+const kernel = new Kernel(createRuntimeContext(new ExpressAdapter(app)), {
+  dashboard: { enabled: true, host: '127.0.0.1', port: 5000 }
+});
 
-  ## Examples
+await kernel.start();
 
-  - [express-app](./examples/express-app) - Express integration with hot reload
-  - [nest-app](./examples/nest-app) - NestJS integration with decorators
+app.listen(3000);
+```
 
-  ## License
+`kernel.status()` returns the current snapshot of builds, active modules, and stats. The dashboard also exposes the same data at `http://127.0.0.1:5000/`.
 
-  MIT
+## Packages
+
+| Package | Description |
+|---------|-------------|
+| [@hivelet/core](./packages/core) | Framework-agnostic kernel |
+| [@hivelet/adapter-express](./packages/adapter-express) | Express integration |
+| [@hivelet/adapter-nest](./packages/adapter-nest) | NestJS (platform-express) integration |
+
+## Architecture
+
+```
+┌─────────────────────────────────────┐
+│  Host application (Express/Nest)    │
+└────────────────┬────────────────────┘
+                 │
+┌────────────────▼────────────────────┐
+│  Adapter (Express / NestExpress)    │
+└────────────────┬────────────────────┘
+                 │
+┌────────────────▼────────────────────┐
+│  Hivelet Kernel                     │
+│  • Module registry                  │
+│  • Exclusive operation queue        │
+│  • Route ownership                  │
+│  • Monitor + optional dashboard     │
+└────────────────┬────────────────────┘
+                 │
+┌────────────────▼────────────────────┐
+│  Runtime modules (.js)              │
+└─────────────────────────────────────┘
+```
+
+## Examples
+
+- [express-app](./examples/express-app) — Express with hot reload and dashboard
+- [nest-app](./examples/nest-app) — NestJS (platform-express) with admin controller
+
+## License
+
+MIT © Hacı Mert Gökhan

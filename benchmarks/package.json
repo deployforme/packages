@@ -1,5 +1,5 @@
 {
-  "name": "deploy4me-benchmarks",
+  "name": "@hivelet/benchmarks",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -9,11 +9,12 @@
     "bench:throughput": "ts-node throughput.ts",
     "bench:memory": "ts-node memory-leak.ts",
     "bench:stress": "ts-node stress-test.ts",
-    "bench:concurrent": "ts-node concurrent-reload.ts"
+    "bench:concurrent": "ts-node concurrent-reload.ts",
+    "typecheck": "tsc --noEmit --pretty false"
   },
   "dependencies": {
-    "@deployforme/core": "workspace:*",
-    "@deployforme/adapter-express": "workspace:*",
+    "@hivelet/core": "workspace:*",
+    "@hivelet/adapter-express": "workspace:*",
     "express": "^4.18.2",
     "autocannon": "^7.15.0",
     "clinic": "^13.0.0"

@@ -1,26 +1,33 @@
-import { ModuleMetadata, RuntimeModule } from './types';
+import type { ModuleMetadata, RouteDefinition, RuntimeModule } from './types';
 
-export class ModuleRegistry {
-  private modules = new Map<string, ModuleMetadata>();
+export class ModuleRegistry<Request = unknown, Response = unknown> {
+  private readonly modules = new Map<string, ModuleMetadata<Request, Response>>();
 
-  register(module: RuntimeModule, routeIds: string[]): void {
-    this.modules.set(module.name, {
+  register(
+    module: RuntimeModule<Request, Response>,
+    registeredRoutes: readonly RouteDefinition<Request, Response>[]
+  ): ModuleMetadata<Request, Response> {
+    const metadata: ModuleMetadata<Request, Response> = Object.freeze({
       module,
-      version: module.version,
-      registeredRoutes: routeIds,
+      registeredRoutes: Object.freeze([...registeredRoutes]),
       loadedAt: new Date()
     });
-  }
 
-  unregister(name: string): ModuleMetadata | undefined {
-    const metadata = this.modules.get(name);
-    if (metadata) {
-      this.modules.delete(name);
-    }
+    this.modules.set(module.name, metadata);
     return metadata;
   }
 
-  get(name: string): ModuleMetadata | undefined {
+  unregister(name: string): ModuleMetadata<Request, Response> | undefined {
+    const metadata = this.modules.get(name);
+    if (!metadata) {
+      return undefined;
+    }
+
+    this.modules.delete(name);
+    return metadata;
+  }
+
+  get(name: string): ModuleMetadata<Request, Response> | undefined {
     return this.modules.get(name);
   }
 
@@ -28,7 +35,7 @@ export class ModuleRegistry {
     return this.modules.has(name);
   }
 
-  list(): ModuleMetadata[] {
+  list(): readonly ModuleMetadata<Request, Response>[] {
     return Array.from(this.modules.values());
   }
 }

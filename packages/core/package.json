@@ -1,20 +1,32 @@
 {
-  "name": "@deployforme/core",
+  "name": "@hivelet/core",
   "version": "1.0.5",
-  "description": "Framework-agnostic runtime module management kernel",
+  "description": "Framework-agnostic runtime module management for Hivelet",
+  "type": "commonjs",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "keywords": [
-    "deploy4me",
+    "hivelet",
     "hot-reload",
     "module-loading",
+    "runtime",
     "zero-downtime"
   ],
   "author": "Hacı Mert Gökhan <hacimertgokhan@gmail.com>",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/deployforme/deploy4me.git",
+    "url": "https://github.com/hivelet/packages.git",
     "directory": "packages/core"
   },
   "files": [
@@ -24,6 +36,9 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
+    "lint": "tsc --noEmit --pretty false",
+    "typecheck": "tsc --noEmit --pretty false",
+    "test": "node --test test/*.test.js",
     "prepublishOnly": "pnpm build"
   },
   "devDependencies": {

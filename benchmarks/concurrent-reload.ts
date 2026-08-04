@@ -1,8 +1,8 @@
-import { Kernel, createRuntimeContext } from '@deploy4me/core';
-import { ExpressAdapter } from '@deploy4me/adapter-express';
+import { Kernel, createRuntimeContext } from '@hivelet/core';
+import { ExpressAdapter } from '@hivelet/adapter-express';
 import express from 'express';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 function createModule(name: string, version: number): string {
   const content = `
@@ -26,7 +26,7 @@ module.exports = {
   return modulePath;
 }
 
-async function benchmarkConcurrentReload() {
+async function benchmarkConcurrentReload(): Promise<void> {
   console.log('=== Concurrent Reload Benchmark ===\n');
 
   const app = express();
@@ -36,13 +36,11 @@ async function benchmarkConcurrentReload() {
   const moduleCount = 20;
   console.log(`Loading ${moduleCount} modules...\n`);
 
-  // Load initial modules
   for (let i = 0; i < moduleCount; i++) {
     const modulePath = createModule(`module${i}`, 1);
     await kernel.load(modulePath);
   }
 
-  // Test concurrent reloads
   const scenarios = [
     { name: '5 Concurrent', concurrent: 5 },
     { name: '10 Concurrent', concurrent: 10 },
@@ -54,7 +52,7 @@ async function benchmarkConcurrentReload() {
     const times: number[] = [];
 
     for (let iter = 0; iter < iterations; iter++) {
-      const promises = [];
+      const promises: Promise<unknown>[] = [];
       const start = process.hrtime.bigint();
 
       for (let i = 0; i < scenario.concurrent; i++) {

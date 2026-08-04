@@ -1,9 +1,3 @@
-export interface MonitoringConfig {
-  liveRunnerActions: boolean;
-  port?: number;
-  host?: string;
-}
-
 export type BuildStatus = 'building' | 'success' | 'error';
 
 export interface BuildRecord {
@@ -29,4 +23,35 @@ export interface MonitoringState {
   builds: BuildRecord[];
   activeModules: Map<string, ActiveModule>;
   startTime: Date;
+}
+
+export interface BuildSnapshot extends Omit<BuildRecord, 'startTime' | 'endTime'> {
+  startTime: string;
+  endTime?: string;
+}
+
+export interface ActiveModuleSnapshot extends Omit<ActiveModule, 'loadedAt'> {
+  loadedAt: string;
+}
+
+export interface MonitoringStats {
+  totalBuilds: number;
+  successfulBuilds: number;
+  failedBuilds: number;
+  buildingNow: number;
+  activeModules: number;
+  uptime: number;
+}
+
+export interface MonitoringSnapshot {
+  builds: BuildSnapshot[];
+  modules: ActiveModuleSnapshot[];
+  stats: MonitoringStats;
+  generatedAt: string;
+}
+
+export interface DashboardAddress {
+  host: string;
+  port: number;
+  url: string;
 }

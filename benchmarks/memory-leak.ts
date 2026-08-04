@@ -1,12 +1,20 @@
-import { Kernel, createRuntimeContext } from '@deploy4me/core';
-import { ExpressAdapter } from '@deploy4me/adapter-express';
+import { Kernel, createRuntimeContext } from '@hivelet/core';
+import { ExpressAdapter } from '@hivelet/adapter-express';
 import express from 'express';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
+interface MemorySample {
+  iteration: number;
+  rss: string;
+  heapTotal: string;
+  heapUsed: string;
+  external: string;
+}
 
 function createModule(name: string, iteration: number): string {
   const content = `
-const largeData = new Array(1000).fill('x'.repeat(1000)); // ~1MB
+const largeData = new Array(1000).fill('x'.repeat(1000));
 
 module.exports = {
   name: '${name}',
@@ -16,14 +24,13 @@ module.exports = {
       id: '${name}-route',
       method: 'GET',
       path: '/${name}',
-      handler: async () => ({ 
+      handler: async () => ({
         iteration: ${iteration},
-        dataSize: largeData.length 
+        dataSize: largeData.length
       })
     });
   },
   dispose() {
-    // Cleanup
   }
 };
   `;
@@ -34,7 +41,7 @@ module.exports = {
   return modulePath;
 }
 
-function getMemoryUsage() {
+function getMemoryUsage(): { rss: string; heapTotal: string; heapUsed: string; external: string } {
   const usage = process.memoryUsage();
   return {
     rss: (usage.rss / 1024 / 1024).toFixed(2),
@@ -44,7 +51,7 @@ function getMemoryUsage() {
   };
 }
 
-async function benchmarkMemoryLeak() {
+async function benchmarkMemoryLeak(): Promise<void> {
   console.log('=== Memory Leak Detection Benchmark ===\n');
   console.log('Testing 1000 reload cycles with 1MB module data...\n');
 
@@ -54,9 +61,8 @@ async function benchmarkMemoryLeak() {
 
   const moduleName = 'memory-test';
   const iterations = 1000;
-  const samples: any[] = [];
+  const samples: MemorySample[] = [];
 
-  // Initial load
   let modulePath = createModule(moduleName, 0);
   await kernel.load(modulePath);
 
@@ -65,18 +71,16 @@ async function benchmarkMemoryLeak() {
   console.log(`  RSS: ${initialMemory.rss} MB`);
   console.log(`  Heap Used: ${initialMemory.heapUsed} MB\n`);
 
-  // Reload cycles
   for (let i = 1; i <= iterations; i++) {
     modulePath = createModule(moduleName, i);
     await kernel.reload(modulePath);
 
     if (i % 100 === 0) {
-      global.gc && global.gc(); // Force GC if available
+      if (global.gc) {
+        global.gc();
+      }
       const memory = getMemoryUsage();
-      samples.push({
-        iteration: i,
-        ...memory
-      });
+      samples.push({ iteration: i, ...memory });
 
       console.log(`After ${i} reloads:`);
       console.log(`  RSS: ${memory.rss} MB`);
@@ -104,9 +108,7 @@ async function benchmarkMemoryLeak() {
     console.log('\n✓ Memory usage is stable.');
   }
 
-  // Cleanup
   fs.rmSync(path.join(__dirname, 'temp'), { recursive: true, force: true });
 }
 
-// Run with: node --expose-gc memory-leak.js
 benchmarkMemoryLeak().catch(console.error);

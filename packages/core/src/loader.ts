@@ -1,33 +1,51 @@
-import { RuntimeModule } from './types';
-import * as path from 'path';
+import * as path from 'node:path';
+import type { RuntimeModule } from './types';
 
 export class ModuleLoader {
-  async load(modulePath: string): Promise<RuntimeModule> {
-    const resolvedPath = path.resolve(modulePath);
-    
-    // Clear require cache for hot reload
-    this.clearCache(resolvedPath);
-    
-    const moduleExport = require(resolvedPath);
-    const module = moduleExport.default || moduleExport;
-    
-    if (!this.isValidModule(module)) {
-      throw new Error(`Invalid module at ${modulePath}: must implement RuntimeModule interface`);
+  async load<Request = unknown, Response = unknown>(modulePath: string): Promise<RuntimeModule<Request, Response>> {
+    if (typeof modulePath !== 'string' || modulePath.trim().length === 0) {
+      throw new TypeError('modulePath must be a non-empty string');
     }
-    
-    return module;
+
+    const resolvedPath = require.resolve(path.resolve(modulePath));
+    delete require.cache[resolvedPath];
+
+    const loaded: unknown = require(resolvedPath);
+    const candidate = this.getDefaultExport(loaded);
+
+    if (!this.isRuntimeModule(candidate)) {
+      throw new TypeError(
+        `Invalid module at ${modulePath}: expected non-empty name and version fields plus a register function`
+      );
+    }
+
+    return candidate as RuntimeModule<Request, Response>;
   }
 
-  private clearCache(modulePath: string): void {
-    delete require.cache[require.resolve(modulePath)];
+  private getDefaultExport(value: unknown): unknown {
+    if (this.isRecord(value) && 'default' in value && value.default !== undefined) {
+      return value.default;
+    }
+
+    return value;
   }
 
-  private isValidModule(obj: any): obj is RuntimeModule {
+  private isRuntimeModule(value: unknown): value is RuntimeModule {
+    if (!this.isRecord(value)) {
+      return false;
+    }
+
     return (
-      obj &&
-      typeof obj.name === 'string' &&
-      typeof obj.version === 'string' &&
-      typeof obj.register === 'function'
+      typeof value.name === 'string' &&
+      value.name.trim().length > 0 &&
+      typeof value.version === 'string' &&
+      value.version.trim().length > 0 &&
+      typeof value.register === 'function' &&
+      (value.dispose === undefined || typeof value.dispose === 'function')
     );
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null;
   }
 }

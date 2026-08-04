@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execSync } from 'node:child_process';
 
 const benchmarks = [
   { name: 'Module Load Performance', script: 'load-performance.ts' },
@@ -10,7 +10,7 @@ const benchmarks = [
 ];
 
 console.log('╔════════════════════════════════════════════════════════════╗');
-console.log('║         Deploy4Me Performance Benchmark Suite             ║');
+console.log('║         Hivelet Performance Benchmark Suite               ║');
 console.log('╚════════════════════════════════════════════════════════════╝\n');
 
 for (const benchmark of benchmarks) {
@@ -24,7 +24,8 @@ for (const benchmark of benchmarks) {
       cwd: __dirname
     });
   } catch (error) {
-    console.error(`\n❌ ${benchmark.name} failed\n`);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`\n❌ ${benchmark.name} failed: ${message}\n`);
   }
 }
 

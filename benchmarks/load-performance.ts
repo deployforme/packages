@@ -1,10 +1,9 @@
-import { Kernel, createRuntimeContext, RuntimeModule } from '@deploy4me/core';
-import { ExpressAdapter } from '@deploy4me/adapter-express';
+import { Kernel, createRuntimeContext } from '@hivelet/core';
+import { ExpressAdapter } from '@hivelet/adapter-express';
 import express from 'express';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
-// Create test modules
 function createTestModule(name: string, routeCount: number): string {
   const routes = Array.from({ length: routeCount }, (_, i) => `
     context.http.registerRoute({
@@ -32,7 +31,7 @@ module.exports = {
   return modulePath;
 }
 
-async function benchmarkModuleLoad() {
+async function benchmarkModuleLoad(): Promise<void> {
   console.log('=== Module Load Performance Benchmark ===\n');
 
   const app = express();
@@ -49,7 +48,7 @@ async function benchmarkModuleLoad() {
 
   for (const scenario of scenarios) {
     const modulePath = createTestModule(`test-${scenario.routes}`, scenario.routes);
-    
+
     const iterations = 100;
     const times: number[] = [];
 
@@ -57,17 +56,18 @@ async function benchmarkModuleLoad() {
       const start = process.hrtime.bigint();
       await kernel.load(modulePath);
       const end = process.hrtime.bigint();
-      
-      times.push(Number(end - start) / 1_000_000); // Convert to ms
-      
+
+      times.push(Number(end - start) / 1_000_000);
+
       await kernel.unload(`test-${scenario.routes}`);
     }
 
+    const sorted = [...times].sort((a, b) => a - b);
     const avg = times.reduce((a, b) => a + b, 0) / times.length;
-    const min = Math.min(...times);
-    const max = Math.max(...times);
-    const p95 = times.sort((a, b) => a - b)[Math.floor(times.length * 0.95)];
-    const p99 = times.sort((a, b) => a - b)[Math.floor(times.length * 0.99)];
+    const min = sorted[0];
+    const max = sorted[sorted.length - 1];
+    const p95 = sorted[Math.floor(sorted.length * 0.95)];
+    const p99 = sorted[Math.floor(sorted.length * 0.99)];
 
     console.log(`${scenario.name} (${scenario.routes} routes):`);
     console.log(`  Average: ${avg.toFixed(2)}ms`);
@@ -78,7 +78,6 @@ async function benchmarkModuleLoad() {
     console.log(`  Throughput: ${(1000 / avg).toFixed(2)} loads/sec\n`);
   }
 
-  // Cleanup
   fs.rmSync(path.join(__dirname, 'temp'), { recursive: true, force: true });
 }
 

@@ -1,9 +1,10 @@
-import { Kernel, createRuntimeContext } from '@deploy4me/core';
-import { ExpressAdapter } from '@deploy4me/adapter-express';
+import { Kernel, createRuntimeContext } from '@hivelet/core';
+import { ExpressAdapter } from '@hivelet/adapter-express';
 import express from 'express';
-import * as http from 'http';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as http from 'node:http';
+import type { AddressInfo } from 'node:net';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 function createModule(name: string): string {
   const content = `
@@ -15,9 +16,9 @@ module.exports = {
       id: '${name}-endpoint',
       method: 'GET',
       path: '/${name}',
-      handler: async () => ({ 
+      handler: async () => ({
         timestamp: Date.now(),
-        data: 'x'.repeat(1000) // 1KB response
+        data: 'x'.repeat(1000)
       })
     });
   }
@@ -30,25 +31,23 @@ module.exports = {
   return modulePath;
 }
 
-async function makeRequest(port: number, path: string): Promise<number> {
+function makeRequest(port: number, path: string): Promise<number> {
   return new Promise((resolve, reject) => {
     const start = Date.now();
-    http.get(`http://localhost:${port}${path}`, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
+    http.get(`http://localhost:${port}${path}`, res => {
+      res.resume();
       res.on('end', () => resolve(Date.now() - start));
     }).on('error', reject);
   });
 }
 
-async function benchmarkThroughput() {
+async function benchmarkThroughput(): Promise<void> {
   console.log('=== Request Throughput Benchmark ===\n');
 
   const app = express();
   const adapter = new ExpressAdapter(app);
   const kernel = new Kernel(createRuntimeContext(adapter));
 
-  // Load 10 modules
   const moduleCount = 10;
   for (let i = 0; i < moduleCount; i++) {
     const modulePath = createModule(`module${i}`);
@@ -56,12 +55,11 @@ async function benchmarkThroughput() {
   }
 
   const server = app.listen(0);
-  const port = (server.address() as any).port;
+  const port = (server.address() as AddressInfo).port;
 
   console.log(`Loaded ${moduleCount} modules`);
   console.log('Testing request throughput...\n');
 
-  // Sequential requests
   const sequentialCount = 1000;
   const sequentialStart = Date.now();
   for (let i = 0; i < sequentialCount; i++) {
@@ -76,14 +74,13 @@ async function benchmarkThroughput() {
   console.log(`  RPS: ${sequentialRps.toFixed(2)}`);
   console.log(`  Avg Latency: ${(sequentialTime / sequentialCount).toFixed(2)}ms\n`);
 
-  // Concurrent requests
   const concurrentCount = 1000;
   const concurrency = 50;
   const batches = Math.ceil(concurrentCount / concurrency);
-  
+
   const concurrentStart = Date.now();
   for (let batch = 0; batch < batches; batch++) {
-    const promises = [];
+    const promises: Promise<number>[] = [];
     for (let i = 0; i < concurrency && (batch * concurrency + i) < concurrentCount; i++) {
       const moduleIndex = (batch * concurrency + i) % moduleCount;
       promises.push(makeRequest(port, `/module${moduleIndex}`));

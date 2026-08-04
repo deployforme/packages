@@ -15,12 +15,37 @@ importers:
         specifier: ^5.3.0
         version: 5.9.3
 
+  apps/taskboard:
+    dependencies:
+      '@hivelet/adapter-express':
+        specifier: workspace:*
+        version: link:../../packages/adapter-express
+      '@hivelet/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      express:
+        specifier: ^4.18.2
+        version: 4.22.1
+    devDependencies:
+      '@types/express':
+        specifier: ^4.17.21
+        version: 4.17.25
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.33
+      ts-node:
+        specifier: ^10.9.2
+        version: 10.9.2(@types/node@20.19.33)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.3.0
+        version: 5.9.3
+
   benchmarks:
     dependencies:
-      '@deployforme/adapter-express':
+      '@hivelet/adapter-express':
         specifier: workspace:*
         version: link:../packages/adapter-express
-      '@deployforme/core':
+      '@hivelet/core':
         specifier: workspace:*
         version: link:../packages/core
       autocannon:
@@ -48,10 +73,10 @@ importers:
 
   examples/express-app:
     dependencies:
-      '@deployforme/adapter-express':
+      '@hivelet/adapter-express':
         specifier: workspace:*
         version: link:../../packages/adapter-express
-      '@deployforme/core':
+      '@hivelet/core':
         specifier: workspace:*
         version: link:../../packages/core
       express:
@@ -73,10 +98,10 @@ importers:
 
   examples/nest-app:
     dependencies:
-      '@deployforme/adapter-nest':
+      '@hivelet/adapter-nest':
         specifier: workspace:*
         version: link:../../packages/adapter-nest
-      '@deployforme/core':
+      '@hivelet/core':
         specifier: workspace:*
         version: link:../../packages/core
       '@nestjs/common':
@@ -95,6 +120,9 @@ importers:
         specifier: ^7.8.1
         version: 7.8.2
     devDependencies:
+      '@types/express':
+        specifier: ^4.17.21
+        version: 4.17.25
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.33
@@ -107,15 +135,15 @@ importers:
 
   packages/adapter-express:
     dependencies:
-      '@deployforme/core':
-        specifier: ^1.0.0
-        version: 1.0.3
+      '@hivelet/core':
+        specifier: workspace:^
+        version: link:../core
     devDependencies:
       '@types/express':
         specifier: ^4.17.21
         version: 4.17.25
       express:
-        specifier: ^4.18.2
+        specifier: ^4.21.2
         version: 4.22.1
       typescript:
         specifier: ^5.3.0
@@ -123,9 +151,12 @@ importers:
 
   packages/adapter-nest:
     dependencies:
-      '@deployforme/core':
-        specifier: ^1.0.0
-        version: 1.0.3
+      '@hivelet/adapter-express':
+        specifier: workspace:^
+        version: link:../adapter-express
+      '@hivelet/core':
+        specifier: workspace:^
+        version: link:../core
     devDependencies:
       '@nestjs/common':
         specifier: ^10.0.0
@@ -133,9 +164,18 @@ importers:
       '@nestjs/core':
         specifier: ^10.0.0
         version: 10.4.22(@nestjs/common@10.4.22(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@10.4.22)(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@nestjs/platform-express':
+        specifier: ^10.0.0
+        version: 10.4.22(@nestjs/common@10.4.22(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@10.4.22)
+      '@types/express':
+        specifier: ^4.17.21
+        version: 4.17.25
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.33
+      express:
+        specifier: ^4.21.2
+        version: 4.22.1
       typescript:
         specifier: ^5.3.0
         version: 5.9.3
@@ -192,9 +232,6 @@ packages:
   '@cspotcode/source-map-support@0.8.1':
     resolution: {integrity: sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw==}
     engines: {node: '>=12'}
-
-  '@deployforme/core@1.0.3':
-    resolution: {integrity: sha512-7SjwsbTI/6AWum5/a39xR/XQrVqidKZkpTKkwJ5tA/oHgHIAApxPqmYeJ9hCTbiH3aTaqWH2xHjnB6Ssge4CNA==}
 
   '@jridgewell/resolve-uri@3.1.2':
     resolution: {integrity: sha512-bRISgCIjP20/tbWSPWMEi54QVPRZExkuD9lJL+UIxUKtwVJA8wW1Trb1jMs1RFXo1CBTNZ/5hpC9QvmKWdopKw==}
@@ -3081,8 +3118,6 @@ snapshots:
   '@cspotcode/source-map-support@0.8.1':
     dependencies:
       '@jridgewell/trace-mapping': 0.3.9
-
-  '@deployforme/core@1.0.3': {}
 
   '@jridgewell/resolve-uri@3.1.2': {}
 

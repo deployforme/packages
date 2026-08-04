@@ -1,7 +1,7 @@
 # Zero Downtime Demo - Test Script
 # Bu script endpoint'leri sürekli test eder
 
-Write-Host "`n🎯 Deploy4Me Zero Downtime Test`n" -ForegroundColor Cyan
+Write-Host "`n🎯 Hivelet Zero Downtime Test`n" -ForegroundColor Cyan
 Write-Host "═══════════════════════════════════════════════════════`n" -ForegroundColor Gray
 
 $choice = Read-Host "Hangi endpoint'i test etmek istersin? (1: Users, 2: Products, 3: Her ikisi)"

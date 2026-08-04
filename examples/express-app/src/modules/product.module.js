@@ -1,21 +1,21 @@
 module.exports = {
   name: 'product',
   version: '1.0.0',
-  
+
   register(context) {
-    context.logger.log('[Deploy4Me] Registering product module routes');
-    
+    context.logger.log('[Hivelet] Registering product module routes');
+
     context.http.registerRoute({
       id: 'product-list',
       method: 'GET',
       path: '/products',
       handler: async () => {
-        return { 
+        return {
           products: [
             { id: 1, name: 'Laptop', price: 999 },
             { id: 3, name: 'Fare', price: 999 },
             { id: 2, name: 'Mouse', price: 29 }
-          ] 
+          ]
         };
       }
     });
@@ -25,15 +25,15 @@ module.exports = {
       method: 'POST',
       path: '/products',
       handler: async (req) => {
-        return { 
-          success: true, 
-          product: { id: 3, ...req.body } 
+        return {
+          success: true,
+          product: { id: 3, ...req.body }
         };
       }
     });
   },
 
   dispose() {
-    console.log('[Deploy4Me] Product module disposed');
+    console.log('[Hivelet] Product module disposed');
   }
 };

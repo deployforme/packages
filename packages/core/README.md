@@ -1,133 +1,144 @@
-# @deployforme/core
+# @hivelet/core
 
-Framework-agnostic runtime module management kernel for Node.js applications. Enables zero-downtime hot-reloading of modules without server restarts.
+Framework-agnostic kernel for runtime module management in Node.js. Load, reload, and unload CommonJS modules without restarting the host process.
 
 ## Features
 
-- Hot-reload modules at runtime without downtime
-- Automatic dependency tracking and cleanup
-- Framework-agnostic core (works with Express, NestJS, Fastify, etc.)
-- Type-safe module definitions
-- Built-in monitoring and metrics
-- Graceful error handling and rollback
+- Hot-reload modules at runtime
+- Exclusive operation queue (no torn writes across `load`/`reload`/`unload`)
+- Cross-module route ownership checks
+- Built-in monitoring dashboard (HTTP) and in-process snapshot
+- Strict, framework-agnostic TypeScript types
 
-## Installation
+## Install
 
 ```bash
-npm install @deployforme/core
-# or
-pnpm add @deployforme/core
+pnpm add @hivelet/core
 ```
 
-## Quick Start
+## Quick start
 
-```typescript
-import { Kernel, ModuleLoader, createRuntimeContext } from '@deployforme/core';
-import { ExpressAdapter } from '@deployforme/adapter-express';
+```ts
 import express from 'express';
+import { Kernel, createRuntimeContext } from '@hivelet/core';
+import { ExpressAdapter } from '@hivelet/adapter-express';
 
 const app = express();
-const adapter = new ExpressAdapter(app);
-const context = createRuntimeContext(adapter);
+const kernel = new Kernel(createRuntimeContext(new ExpressAdapter(app)));
 
-const kernel = new Kernel(context);
-const loader = new ModuleLoader(kernel);
-
-// Load a module
-await loader.loadModule('./modules/user.module.js');
-
-// Reload a module (zero-downtime)
-await loader.reloadModule('user');
+await kernel.load('./modules/user.module.js');
+await kernel.reload('./modules/user.module.js'); // hot reload
+await kernel.unload('user');
 
 app.listen(3000);
 ```
 
-## Module Structure
+## Module shape
 
-```javascript
+```js
+// user.module.js
 module.exports = {
   name: 'user',
   version: '1.0.0',
-  
   register(context) {
     context.http.registerRoute({
       id: 'user-list',
       method: 'GET',
       path: '/users',
-      handler: async (req, res) => {
-        return { users: ['Alice', 'Bob'] };
-      }
+      handler: async () => ({ users: ['Alice', 'Bob'] })
     });
   },
-  
   dispose() {
-    // Cleanup logic
+    // cleanup
   }
 };
 ```
 
-## API Reference
+`name` and `version` are required and must be non-empty. `register` is required; `dispose` is optional.
 
-### Kernel
+## API
 
-Main orchestrator for module lifecycle management.
+### `Kernel`
 
-```typescript
-const kernel = new Kernel(context);
-
-// Get loaded modules
-kernel.getLoadedModules();
-
-// Get module metadata
-kernel.getModuleMetadata('moduleName');
+```ts
+new Kernel(context, config?);
 ```
 
-### ModuleLoader
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `start()` | `Promise<DashboardAddress \| undefined>` | Boots the monitoring HTTP server if enabled |
+| `load(path)` | `Promise<ModuleMetadata>` | Load a module from disk |
+| `reload(path)` | `Promise<ModuleMetadata>` | Reload a module by file path |
+| `unload(name)` | `Promise<boolean>` | Unregister a module by name |
+| `list()` | `readonly ModuleMetadata[]` | Currently active modules |
+| `get(name)` | `ModuleMetadata \| undefined` | Single module by name |
+| `status()` | `MonitoringSnapshot` | Builds, active modules, and stats |
+| `stop()` | `Promise<void>` | Unload everything and stop the dashboard |
 
-Handles loading, reloading, and unloading of modules.
+All mutating operations (`load`, `reload`, `unload`, `stop`) run through a single exclusive queue.
 
-```typescript
-const loader = new ModuleLoader(kernel);
+### `createRuntimeContext`
 
-// Load a module
-await loader.loadModule('./path/to/module.js');
-
-// Reload a module
-await loader.reloadModule('moduleName');
-
-// Unload a module
-await loader.unloadModule('moduleName');
+```ts
+createRuntimeContext(http, options?);
 ```
 
-### RuntimeContext
+Returns a frozen `RuntimeContext` with `http`, optional `container`, and an optional `logger` (defaults to `DefaultLogger`).
 
-Provides access to HTTP adapter, logger, and dependency container.
+### Module metadata
 
-```typescript
-const context = createRuntimeContext(
-  httpAdapter,
-  dependencyContainer,
-  logger
-);
+```ts
+interface ModuleMetadata {
+  readonly module: RuntimeModule;   // module.version lives here
+  readonly registeredRoutes: readonly RouteDefinition[];
+  readonly loadedAt: Date;
+}
 ```
+
+Use `m.module.version` to read the module's version.
+
+## Configuration
+
+```ts
+new Kernel(context, {
+  dashboard: {
+    enabled: true,
+    host: '127.0.0.1',
+    port: 5000,
+    refreshInterval: 3000 // ms, 500..60000
+  },
+  buildHistoryLimit: 100 // 1..1000
+});
+```
+
+The dashboard only binds when `enabled: true`. `port: 0` lets the OS pick a free port.
 
 ## Monitoring
 
-Built-in monitoring dashboard for tracking module performance:
-
-```typescript
-import { MonitoringDashboard } from '@deployforme/core';
-
-const dashboard = new MonitoringDashboard(kernel);
-dashboard.start(9090); // Metrics available at http://localhost:9090
+```ts
+await kernel.start();
+const snapshot = kernel.status();
 ```
+
+`kernel.status()` returns a `MonitoringSnapshot` with:
+
+- `builds` — recent build records (id, moduleName, modulePath, status, duration, error)
+- `modules` — currently active modules (name, version, routeCount, status, loadedAt)
+- `stats` — totals (totalBuilds, successfulBuilds, failedBuilds, buildingNow, activeModules, uptime)
+- `generatedAt` — ISO timestamp
+
+The HTTP dashboard serves the same data:
+
+- `GET /api/state` — JSON snapshot
+- `GET /health` — liveness probe
+- `GET /` — built-in dark UI
 
 ## Adapters
 
-Core is framework-agnostic. Use official adapters:
+Use an official adapter to wire the kernel into a framework:
 
-- [@deployforme/adapter-express](https://www.npmjs.com/package/@deployforme/adapter-express) - Express.js adapter
-- [@deployforme/adapter-nest](https://www.npmjs.com/package/@deployforme/adapter-nest) - NestJS adapter
+- [@hivelet/adapter-express](https://www.npmjs.com/package/@hivelet/adapter-express) — Express.js
+- [@hivelet/adapter-nest](https://www.npmjs.com/package/@hivelet/adapter-nest) — NestJS (platform-express)
 
 ## License
 

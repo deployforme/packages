@@ -1,224 +1,158 @@
-# @deployforme/adapter-nest
+# @hivelet/adapter-nest
 
-NestJS adapter for Deploy4Me runtime module management system.
+NestJS adapter for Hivelet. Connects the kernel to a Nest application and reuses the Express adapter for route registration.
+
+> **Platform support:** `@nestjs/platform-express` only. NestJS applications created with `FastifyAdapter` are not supported and will throw a `TypeError` at construction time.
 
 ## Features
 
-- Full NestJS integration
-- Dynamic route registration/unregistration
-- Automatic body parsing (built-in)
-- Type-safe route definitions
-- Works with NestJS exception filters
-- Compatible with Express and Fastify platforms
+- Plug-and-play `NestExpressAdapter` for `INestApplication`
+- Compatible with NestJS guards, interceptors, exception filters, pipes, and middleware
+- Atomic route swap on reload
+- Type-safe `Request`/`Response` end-to-end
 
-## Installation
+## Install
 
 ```bash
-npm install @deployforme/core @deployforme/adapter-nest
-# or
-pnpm add @deployforme/core @deployforme/adapter-nest
+pnpm add @hivelet/core @hivelet/adapter-nest \
+        @nestjs/common @nestjs/core @nestjs/platform-express \
+        express
 ```
 
-## Quick Start
+`@nestjs/platform-fastify` is **not** a supported peer.
 
-```typescript
+## Quick start
+
+```ts
+import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
+import { Kernel, createRuntimeContext } from '@hivelet/core';
+import { NestExpressAdapter } from '@hivelet/adapter-nest';
 import { AppModule } from './app.module';
-import { Kernel, ModuleLoader, createRuntimeContext } from '@deployforme/core';
-import { NestAdapter } from '@deployforme/adapter-nest';
+import { HiveletRegistry } from './hivelet.registry';
 
-async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  
-  // Create adapter and context
-  const adapter = new NestAdapter(app);
-  const context = createRuntimeContext(adapter);
-  
-  // Initialize kernel and loader
-  const kernel = new Kernel(context);
-  const loader = new ModuleLoader(kernel);
-  
-  // Load dynamic modules
-  await loader.loadModule('./modules/user.module.js');
-  await loader.loadModule('./modules/admin.module.js');
-  
-  await app.listen(3000);
-  console.log('NestJS app with Deploy4Me running on http://localhost:3000');
-}
+const app = await NestFactory.create(AppModule);
+const registry = app.get(HiveletRegistry);
 
-bootstrap();
+const kernel = new Kernel(createRuntimeContext(new NestExpressAdapter(app)));
+registry.set(kernel);
+
+await kernel.load('./modules/user.module.js');
+await app.listen(3000);
 ```
 
-## Module Example
+`NestAdapter` is exported as an alias of `NestExpressAdapter` for backward compatibility — both refer to the same class.
 
-```javascript
+`HiveletRegistry` is a small injectable that holds the kernel. It keeps controllers typed (no `any`) and works with Nest's DI graph:
+
+```ts
+import { Injectable } from '@nestjs/common';
+import type { Request, Response } from 'express';
+import type { Kernel } from '@hivelet/core';
+
+@Injectable()
+export class HiveletRegistry {
+  private kernel: Kernel<Request, Response> | undefined;
+
+  set(kernel: Kernel<Request, Response>): void {
+    this.kernel = kernel;
+  }
+
+  get(): Kernel<Request, Response> {
+    if (!this.kernel) {
+      throw new Error('Hivelet kernel is not initialized');
+    }
+    return this.kernel;
+  }
+}
+```
+
+## Module example
+
+```js
+// user.module.js
 module.exports = {
   name: 'user',
   version: '1.0.0',
-  
   register(context) {
-    context.logger.log('Registering user module routes');
-    
-    // GET endpoint
     context.http.registerRoute({
       id: 'user-list',
       method: 'GET',
       path: '/users',
-      handler: async (req, res) => {
-        return { users: ['Alice', 'Bob', 'Charlie'] };
-      }
+      handler: async () => ({ users: ['Alice', 'Bob', 'Charlie'] })
     });
 
-    // POST endpoint - body is automatically parsed
     context.http.registerRoute({
       id: 'user-create',
       method: 'POST',
       path: '/users',
-      handler: async (req, res) => {
-        const { email, password } = req.body;
-        
-        return { 
-          message: 'User created',
-          email,
-          id: Math.floor(Math.random() * 1000)
-        };
-      }
-    });
-
-    // Dynamic parameters
-    context.http.registerRoute({
-      id: 'user-get',
-      method: 'GET',
-      path: '/users/:id',
-      handler: async (req, res) => {
-        return { 
-          id: req.params.id,
-          name: 'User ' + req.params.id 
-        };
-      }
+      handler: async (req) => ({
+        id: Math.floor(Math.random() * 1e6),
+        email: req.body?.email
+      })
     });
   },
-  
-  dispose() {
-    console.log('User module disposed');
-  }
+  dispose() {}
 };
 ```
 
-## Body Parsing
+## Hot reload
 
-The NestAdapter automatically handles body parsing for POST, PUT, and PATCH requests. You don't need to manually parse the request body:
-
-```javascript
-// ✅ Body is automatically available
-context.http.registerRoute({
-  id: 'create-item',
-  method: 'POST',
-  path: '/items',
-  handler: async (req, res) => {
-    const { name, price } = req.body; // Already parsed!
-    return { success: true, item: { name, price } };
-  }
-});
+```ts
+await kernel.load('./modules/user.module.js');
+// edit user.module.js ...
+await kernel.reload('./modules/user.module.js');
 ```
 
-## Hot Reload Example
+Old routes are unregistered, new ones are registered, and pending requests are not interrupted.
 
-```typescript
-// Initial load
-await loader.loadModule('./modules/user.module.js');
+## Admin controller
 
-// Update user.module.js with new routes or logic...
+```ts
+import { Controller, Get, Post, Param } from '@nestjs/common';
+import type { Kernel } from '@hivelet/core';
+import type { Request, Response } from 'express';
+import { HiveletRegistry } from './hivelet.registry';
 
-// Reload without restarting NestJS
-await loader.reloadModule('user');
-// Old routes removed, new routes registered
-// Zero downtime!
-```
-
-## Admin Panel Example
-
-Create an admin controller to manage modules:
-
-```typescript
-import { Controller, Post, Delete, Param } from '@nestjs/common';
-import { ModuleLoader } from '@deployforme/core';
+type HiveletKernel = Kernel<Request, Response>;
 
 @Controller('admin/modules')
 export class AdminController {
-  constructor(private loader: ModuleLoader) {}
+  constructor(private readonly registry: HiveletRegistry) {}
+
+  private kernel(): HiveletKernel {
+    return this.registry.get();
+  }
+
+  @Get()
+  list() {
+    return this.kernel().list().map(m => ({
+      name: m.module.name,
+      version: m.module.version,
+      routes: m.registeredRoutes.length
+    }));
+  }
 
   @Post(':name/reload')
-  async reloadModule(@Param('name') name: string) {
-    await this.loader.reloadModule(name);
-    return { message: `Module ${name} reloaded` };
-  }
-
-  @Delete(':name')
-  async unloadModule(@Param('name') name: string) {
-    await this.loader.unloadModule(name);
-    return { message: `Module ${name} unloaded` };
+  reload(@Param('name') name: string) {
+    return this.kernel().reload(`./modules/${name}.module.js`);
   }
 }
 ```
 
-## API Reference
+Don't set the kernel directly on `INestApplication` (`app.hiveletKernel = ...`) — Nest 10+ wraps the app in a Proxy that rejects unknown property writes with `'set' on proxy`. Use a registered service instead.
 
-### NestAdapter
+## Platform support
 
-```typescript
-class NestAdapter implements HttpAdapter {
-  constructor(app: INestApplication);
-  
-  registerRoute(definition: RouteDefinition): void;
-  unregisterRoute(id: string): void;
-}
-```
-
-### Route Definition
-
-```typescript
-interface RouteDefinition {
-  id: string;              // Unique route identifier
-  method: HttpMethod;      // GET, POST, PUT, DELETE, PATCH
-  path: string;            // Route path
-  handler: Function;       // Async route handler
-}
-```
-
-## Platform Support
-
-Works with both Express and Fastify platforms:
-
-```typescript
-// Express (default)
+```ts
+// supported
 const app = await NestFactory.create(AppModule);
 
-// Fastify
+// not supported — throws at adapter construction
 const app = await NestFactory.create(AppModule, new FastifyAdapter());
 ```
 
-## Integration with NestJS Features
-
-Dynamic modules work alongside NestJS features:
-
-- ✅ Guards
-- ✅ Interceptors
-- ✅ Exception Filters
-- ✅ Pipes
-- ✅ Middleware
-
-## Monitoring
-
-Use the built-in monitoring dashboard:
-
-```typescript
-import { MonitoringDashboard } from '@deployforme/core';
-
-const dashboard = new MonitoringDashboard(kernel);
-dashboard.start(9090);
-// Visit http://localhost:9090 for metrics
-```
+The adapter inspects `app.getHttpAdapter().getType()` and throws `TypeError('NestExpressAdapter requires @nestjs/platform-express')` if the platform is not Express.
 
 ## License
 

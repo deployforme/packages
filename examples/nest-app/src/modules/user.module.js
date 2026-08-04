@@ -1,10 +1,10 @@
 module.exports = {
   name: 'user',
   version: '1.0.0',
-  
+
   register(context) {
-    context.logger.log('Registering user module routes (NestJS)');
-    
+    context.logger.log('[Hivelet] Registering user module routes (NestJS)');
+
     context.http.registerRoute({
       id: 'user-list',
       method: 'GET',
@@ -29,8 +29,8 @@ module.exports = {
       path: '/users',
       handler: async (req, res) => {
         const { email, password } = req.body || {};
-        
-        return { 
+
+        return {
           message: 'User created',
           email,
           id: Math.floor(Math.random() * 1000)

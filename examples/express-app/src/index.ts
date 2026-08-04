@@ -1,46 +1,46 @@
 import express from 'express';
-import { Kernel, createRuntimeContext } from '@deploy4me/core';
-import { ExpressAdapter } from '@deploy4me/adapter-express';
-import * as path from 'path';
+import type { Request, Response } from 'express';
+import { Kernel, createRuntimeContext } from '@hivelet/core';
+import { ExpressAdapter } from '@hivelet/adapter-express';
+import * as path from 'node:path';
 
 const app = express();
 app.use(express.json());
 
-// Create adapter and kernel
 const adapter = new ExpressAdapter(app);
-const context = createRuntimeContext(adapter);
-const kernel = new Kernel(context);
+const kernel = new Kernel(createRuntimeContext(adapter));
 
-// Load initial module
-kernel.load(path.join(__dirname, 'modules', 'user.module.js'))
+kernel
+  .load(path.join(__dirname, 'modules', 'user.module.js'))
   .then(() => console.log('User module loaded'))
   .catch(console.error);
 
-// Management endpoints
-app.post('/admin/load', async (req, res) => {
+app.post('/admin/load', async (req: Request, res: Response) => {
   try {
-    const { path: modulePath } = req.body;
+    const modulePath = String(req.body?.path ?? '');
     await kernel.load(modulePath);
     res.json({ success: true, message: `Module loaded from ${modulePath}` });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ success: false, error: message });
   }
 });
 
-app.post('/admin/reload/:module', async (req, res) => {
+app.post('/admin/reload/:module', async (req: Request, res: Response) => {
   try {
     const modulePath = path.join(__dirname, 'modules', `${req.params.module}.module.js`);
     await kernel.reload(modulePath);
     res.json({ success: true, message: `Module ${req.params.module} reloaded` });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ success: false, error: message });
   }
 });
 
-app.get('/admin/modules', (req, res) => {
+app.get('/admin/modules', (_req: Request, res: Response) => {
   const modules = kernel.list().map(m => ({
     name: m.module.name,
-    version: m.version,
+    version: m.module.version,
     routes: m.registeredRoutes.length,
     loadedAt: m.loadedAt
   }));

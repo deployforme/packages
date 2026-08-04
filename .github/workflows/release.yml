@@ -1,55 +1,117 @@
-name: Build & Release
+name: Hivelet CI
 
 on:
   push:
     branches: [main]
-    paths:
-      - 'packages/core/**'
-      - 'packages/adapter-express/**'
-      - 'packages/adapter-nest/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: hivelet-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build:
+  validate:
+    name: Lint, typecheck, test
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'pnpm'
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup pnpm
+        run: corepack enable
+
+      - name: Use workspace pnpm version
+        run: pnpm --version | grep -E "^10\." || (echo "Wrong pnpm version" && exit 1)
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build all packages
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
         run: pnpm build
 
-      - name: Get short commit SHA
-        id: sha
-        run: echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+      - name: Test
+        run: pnpm test
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
+  release:
+    name: Publish packages
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
         with:
-          tag_name: v0.0.0-${{ steps.sha.outputs.sha }}
-          name: Release ${{ steps.sha.outputs.sha }}
-          body: 'Auto-generated release from commit ${{ steps.sha.outputs.sha }}'
-          files: |
-            packages/core/dist/*.tgz
-            packages/adapter-express/dist/*.tgz
-            packages/adapter-nest/dist/*.tgz
-          draft: false
-          prerelease: false
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Setup pnpm
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Pack packages
+        working-directory: packages/core
+        run: pnpm pack --pack-destination ../dist
+
+      - name: Pack express adapter
+        working-directory: packages/adapter-express
+        run: pnpm pack --pack-destination ../dist
+
+      - name: Pack nest adapter
+        working-directory: packages/adapter-nest
+        run: pnpm pack --pack-destination ../dist
+
+      - name: Upload archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: hivelet-packages
+          path: packages/*/dist/*.tgz
+
+      - name: Publish @hivelet/core
+        working-directory: packages/core
+        run: pnpm publish --access public --no-git-checks
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @hivelet/adapter-express
+        working-directory: packages/adapter-express
+        run: pnpm publish --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @hivelet/adapter-nest
+        working-directory: packages/adapter-nest
+        run: pnpm publish --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create release tag
+        run: |
+          VERSION=$(node -p "require('./packages/core/package.json').version")
+          git tag "v${VERSION}" || true
+          git push origin "v${VERSION}" || true

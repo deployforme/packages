@@ -1,0 +1,114 @@
+site_name: Hivelet
+site_description: Safe runtime module management for modern Node.js applications
+site_url: https://hivelet.dev/
+repo_url: https://github.com/hivelet/packages
+repo_name: hivelet/packages
+docs_dir: docs
+
+theme:
+  name: material
+  language: en
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: no-preference)"
+      scheme: slate
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+  font:
+    text: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+    code: "JetBrains Mono, SFMono-Regular, Menlo, Consolas, monospace"
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.keys
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Concepts:
+      - concepts/index.md
+      - Kernel: concepts/kernel.md
+      - Modules: concepts/modules.md
+      - Adapters: concepts/adapters.md
+      - Monitoring: concepts/monitoring.md
+      - Configuration: concepts/configuration.md
+  - API reference:
+      - api/index.md
+      - Core: api/core.md
+      - Express adapter: api/adapter-express.md
+      - Nest adapter: api/adapter-nest.md
+  - Guides:
+      - guides/index.md
+      - Dependency injection: guides/dependency-injection.md
+      - Hot reload: guides/hot-reload.md
+      - Graceful shutdown: guides/graceful-shutdown.md
+      - Zero-downtime deployment: guides/zero-downtime.md
+  - Examples:
+      - examples/index.md
+      - TaskBoard: examples/taskboard.md
+      - Express app: examples/express.md
+      - Nest app: examples/nest.md
+
+extra:
+  generator: false
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/hivelet/packages
