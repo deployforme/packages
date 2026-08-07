@@ -1,3 +1,4 @@
+import { HttpError } from '@hivelet/core';
 import type { HttpAdapter, HttpMethod, RouteDefinition } from '@hivelet/core';
 import express, { Router } from 'express';
 import type { Application, NextFunction, Request, Response } from 'express';
@@ -14,11 +15,16 @@ export class ExpressAdapter implements HttpAdapter<Request, Response> {
   }
 
   registerRoute(definition: RouteDefinition<Request, Response>): void {
+    const previous = this.routes.get(definition.id);
     this.routes.set(definition.id, Object.freeze({ ...definition }));
     try {
       this.rebuildRouter();
     } catch (error) {
-      this.routes.delete(definition.id);
+      if (previous) {
+        this.routes.set(definition.id, previous);
+      } else {
+        this.routes.delete(definition.id);
+      }
       throw error;
     }
   }
@@ -47,10 +53,16 @@ export class ExpressAdapter implements HttpAdapter<Request, Response> {
         try {
           const result = await definition.handler(request, response);
           if (result !== undefined && !response.headersSent) {
-            response.json(result);
+            response.status(definition.status ?? 200).json(result);
+          } else if (definition.status !== undefined && !response.headersSent) {
+            response.status(definition.status).end();
           }
         } catch (error) {
-          next(error);
+          if (error instanceof HttpError && !response.headersSent) {
+            response.status(error.status).json({ error: error.message });
+          } else {
+            next(error);
+          }
         }
       });
     }

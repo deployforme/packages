@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const express = require('express');
 const { afterEach, test } = require('node:test');
 const { ExpressAdapter } = require('../dist');
+const { HttpError } = require('@hivelet/core');
 
 function listen(app) {
   return new Promise(resolve => {
@@ -87,7 +88,34 @@ test('ExpressAdapter returns 404 once a route is unregistered', async () => {
   assert.equal((await request('/temporal')).status, 404);
 });
 
-test('ExpressAdapter replaces a route by id without exposing the private router', async () => {
+test('ExpressAdapter applies route statuses and serializes HttpError responses', async () => {
+  const { adapter, server, request } = await createServer();
+  track(server);
+
+  adapter.registerRoute({
+    id: 'remove',
+    method: 'DELETE',
+    path: '/items/:id',
+    status: 204,
+    handler: () => undefined
+  });
+  adapter.registerRoute({
+    id: 'missing',
+    method: 'GET',
+    path: '/missing',
+    handler: () => { throw new HttpError(404, 'Item not found'); }
+  });
+
+  const removed = await request('/items/1', { method: 'DELETE' });
+  assert.equal(removed.status, 204);
+  assert.equal(removed.body, '');
+
+  const missing = await request('/missing');
+  assert.equal(missing.status, 404);
+  assert.equal(missing.body, JSON.stringify({ error: 'Item not found' }));
+});
+
+test('ExpressAdapter supports unregistering before a route replacement', async () => {
   const app = express();
   const adapter = new ExpressAdapter(app);
   const server = await listen(app);
@@ -162,4 +190,27 @@ test('ExpressAdapter replaces a route by id without exposing the private router'
   assert.equal(second.body, JSON.stringify({ version: 2 }));
 
   assert.equal(typeof adapter._router, 'undefined');
+});
+
+test('ExpressAdapter restores the active route when a replacement cannot be built', async () => {
+  const { adapter, server, request } = await createServer();
+  track(server);
+
+  adapter.registerRoute({
+    id: 'safe-replacement',
+    method: 'GET',
+    path: '/safe',
+    handler: () => ({ version: 1 })
+  });
+
+  assert.throws(() => adapter.registerRoute({
+    id: 'safe-replacement',
+    method: 'INVALID',
+    path: '/safe',
+    handler: () => ({ version: 2 })
+  }), TypeError);
+
+  const response = await request('/safe');
+  assert.equal(response.status, 200);
+  assert.equal(response.body, JSON.stringify({ version: 1 }));
 });

@@ -11,6 +11,9 @@ export interface RouteDefinition<Request = unknown, Response = unknown, Result =
   readonly id: string;
   readonly method: HttpMethod;
   readonly path: string;
+  /** Deployment version for this endpoint. Defaults to its module version. */
+  readonly version?: string;
+  readonly status?: number;
   readonly handler: RouteHandler<Request, Response, Result>;
 }
 

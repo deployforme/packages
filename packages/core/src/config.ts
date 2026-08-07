@@ -3,6 +3,10 @@ export interface DashboardConfig {
   host?: string;
   port?: number;
   refreshInterval?: number;
+  /** File containing the salted SHA-512 verifier. The generated password is never stored. */
+  authFile?: string;
+  /** Authenticated browser session lifetime in milliseconds. Defaults to 12 hours. */
+  sessionTtl?: number;
 }
 
 export interface AutonomousConfig {
@@ -52,6 +56,8 @@ export interface ResolvedDashboardConfig {
   readonly host: string;
   readonly port: number;
   readonly refreshInterval: number;
+  readonly authFile: string;
+  readonly sessionTtl: number;
 }
 
 export interface ResolvedAutonomousConfig {
@@ -85,7 +91,9 @@ const DEFAULT_CONFIG: ResolvedKernelConfig = Object.freeze({
     enabled: false,
     host: '127.0.0.1',
     port: 0,
-    refreshInterval: 3000
+    refreshInterval: 3000,
+    authFile: '.hivelet/dashboard-auth.json',
+    sessionTtl: 43_200_000
   }),
   buildHistoryLimit: 100,
   autonomous: Object.freeze({
@@ -121,6 +129,8 @@ export function resolveKernelConfig(config: KernelConfig = {}): ResolvedKernelCo
   const host: string = (dashboard.host ?? DEFAULT_CONFIG.dashboard.host) as string;
   const port: number = (dashboard.port ?? DEFAULT_CONFIG.dashboard.port) as number;
   const refreshInterval: number = (dashboard.refreshInterval ?? DEFAULT_CONFIG.dashboard.refreshInterval) as number;
+  const authFile: string = (dashboard.authFile ?? DEFAULT_CONFIG.dashboard.authFile) as string;
+  const sessionTtl: number = (dashboard.sessionTtl ?? DEFAULT_CONFIG.dashboard.sessionTtl) as number;
   const buildHistoryLimit: number = (config.buildHistoryLimit ?? DEFAULT_CONFIG.buildHistoryLimit) as number;
 
   if (typeof enabled !== 'boolean') {
@@ -131,6 +141,10 @@ export function resolveKernelConfig(config: KernelConfig = {}): ResolvedKernelCo
   }
   assertIntegerInRange(port, 0, 65535, 'dashboard.port');
   assertIntegerInRange(refreshInterval, 500, 60000, 'dashboard.refreshInterval');
+  if (typeof authFile !== 'string' || authFile.trim().length === 0) {
+    throw new TypeError('dashboard.authFile must be a non-empty string');
+  }
+  assertIntegerInRange(sessionTtl, 60_000, 604_800_000, 'dashboard.sessionTtl');
   assertIntegerInRange(buildHistoryLimit, 1, 1000, 'buildHistoryLimit');
 
   return Object.freeze({
@@ -138,7 +152,9 @@ export function resolveKernelConfig(config: KernelConfig = {}): ResolvedKernelCo
       enabled,
       host: host.trim(),
       port,
-      refreshInterval
+      refreshInterval,
+      authFile: authFile.trim(),
+      sessionTtl
     }),
     buildHistoryLimit,
     autonomous: resolveAutonomousConfig(config.autonomous as AutonomousConfig | undefined),

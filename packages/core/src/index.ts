@@ -20,5 +20,6 @@ export type { ModuleRevision, RevisionStatus, VersionStoreOptions } from './vers
 export { ModuleWatcher } from './watcher';
 export type { ModuleWatcherOptions, WatchEvent, WatchEventKind } from './watcher';
 export * from './types';
+export * from './http';
 export * from './monitoring';
 export * from './logging';

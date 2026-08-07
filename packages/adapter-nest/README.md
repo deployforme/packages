@@ -7,6 +7,8 @@ NestJS adapter for Hivelet. Connects the kernel to a Nest application and reuses
 ## Features
 
 - Plug-and-play `NestExpressAdapter` for `INestApplication`
+- `HiveletNestFactory` for one-step application and kernel bootstrap
+- One structured logger stream for NestJS and Hivelet
 - Compatible with NestJS guards, interceptors, exception filters, pipes, and middleware
 - Atomic route swap on reload
 - Type-safe `Request`/`Response` end-to-end
@@ -25,75 +27,53 @@ pnpm add @hivelet/core @hivelet/adapter-nest \
 
 ```ts
 import 'reflect-metadata';
-import { NestFactory } from '@nestjs/core';
-import { Kernel, createRuntimeContext } from '@hivelet/core';
-import { NestExpressAdapter } from '@hivelet/adapter-nest';
+import { HiveletNestFactory } from '@hivelet/adapter-nest';
+import * as path from 'node:path';
 import { AppModule } from './app.module';
-import { HiveletRegistry } from './hivelet.registry';
+import { UserStore } from './user.store';
 
-const app = await NestFactory.create(AppModule);
-const registry = app.get(HiveletRegistry);
-
-const kernel = new Kernel(createRuntimeContext(new NestExpressAdapter(app)));
-registry.set(kernel);
-
-await kernel.load('./modules/user.module.js');
-await app.listen(3000);
+void HiveletNestFactory.start(AppModule, {
+  port: 3000,
+  modules: path.join(__dirname, 'modules'),
+  inject: { userStore: UserStore }
+});
 ```
 
-`NestAdapter` is exported as an alias of `NestExpressAdapter` for backward compatibility — both refer to the same class.
-
-`HiveletRegistry` is a small injectable that holds the kernel. It keeps controllers typed (no `any`) and works with Nest's DI graph:
+Import `HiveletModule` once in the root Nest module. `HiveletRuntime` then exposes the
+kernel to Nest controllers when admin endpoints need it.
 
 ```ts
-import { Injectable } from '@nestjs/common';
-import type { Request, Response } from 'express';
-import type { Kernel } from '@hivelet/core';
-
-@Injectable()
-export class HiveletRegistry {
-  private kernel: Kernel<Request, Response> | undefined;
-
-  set(kernel: Kernel<Request, Response>): void {
-    this.kernel = kernel;
-  }
-
-  get(): Kernel<Request, Response> {
-    if (!this.kernel) {
-      throw new Error('Hivelet kernel is not initialized');
-    }
-    return this.kernel;
-  }
-}
+@Module({ imports: [HiveletModule], providers: [UserStore] })
+export class AppModule {}
 ```
+
+`NestAdapter` remains an alias of the low-level `NestExpressAdapter`.
 
 ## Module example
 
-```js
-// user.module.js
-module.exports = {
+```ts
+import { Body, Controller, Get, Post, defineModule } from '@hivelet/core';
+
+@Controller('/users')
+class UsersController {
+  constructor(private readonly store: UserStore) {}
+
+  @Get()
+  list() {
+    return this.store.list();
+  }
+
+  @Post()
+  create(@Body() input: CreateUserInput) {
+    return this.store.create(input);
+  }
+}
+
+export default defineModule({
   name: 'user',
   version: '1.0.0',
-  register(context) {
-    context.http.registerRoute({
-      id: 'user-list',
-      method: 'GET',
-      path: '/users',
-      handler: async () => ({ users: ['Alice', 'Bob', 'Charlie'] })
-    });
-
-    context.http.registerRoute({
-      id: 'user-create',
-      method: 'POST',
-      path: '/users',
-      handler: async (req) => ({
-        id: Math.floor(Math.random() * 1e6),
-        email: req.body?.email
-      })
-    });
-  },
-  dispose() {}
-};
+  controllers: context => new UsersController(context.container!.get('userStore'))
+});
 ```
 
 ## Hot reload

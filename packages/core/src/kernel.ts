@@ -21,6 +21,10 @@ import { ModuleWatcher } from './watcher';
 
 const HTTP_METHODS = new Set<HttpMethod>(['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS']);
 
+interface RouteTarget<Request, Response> {
+  route: RouteDefinition<Request, Response>;
+}
+
 export interface KernelEventMap<Request, Response> {
   'module:loaded': [ModuleMetadata<Request, Response>];
   'module:unloaded': [string];
@@ -37,6 +41,10 @@ export class Kernel<Request = unknown, Response = unknown> extends EventEmitter 
   private readonly config: ResolvedKernelConfig;
   private readonly versions?: VersionStore;
   private readonly modulePaths = new Map<string, string>();
+  private readonly routeTargets = new WeakMap<
+    RouteDefinition<Request, Response>,
+    RouteTarget<Request, Response>
+  >();
   private pendingOperation: Promise<void> = Promise.resolve();
   private dashboard?: Dashboard;
   private dashboardAddress?: DashboardAddress;
@@ -81,7 +89,9 @@ export class Kernel<Request = unknown, Response = unknown> extends EventEmitter 
       return this.dashboardStart;
     }
 
-    this.dashboard = new Dashboard(this.monitor, this.config.dashboard);
+    this.dashboard = new Dashboard(this.monitor, this.config.dashboard, password => {
+      this.write('warn', `Dashboard password (shown once): ${password}`, { password });
+    });
     this.dashboardStart = this.dashboard.start();
 
     try {
@@ -468,31 +478,69 @@ export class Kernel<Request = unknown, Response = unknown> extends EventEmitter 
   ): Promise<ModuleMetadata<Request, Response>> {
     const previous = this.registry.get(module.name);
     const previousRoutes = previous?.registeredRoutes ?? [];
+    const previousById = new Map(previousRoutes.map(route => [route.id, route]));
+    const nextIds = new Set(routes.map(route => route.id));
     const activatedRoutes: RouteDefinition<Request, Response>[] = [];
-
-    for (const route of previousRoutes) {
-      this.context.http.unregisterRoute(route.id);
-    }
+    const addedRoutes: RouteDefinition<Request, Response>[] = [];
+    const replacedRoutes: RouteDefinition<Request, Response>[] = [];
+    const removedRoutes: RouteDefinition<Request, Response>[] = [];
+    const targetUpdates: Array<{
+      target: RouteTarget<Request, Response>;
+      route: RouteDefinition<Request, Response>;
+    }> = [];
 
     try {
       for (const route of routes) {
-        this.context.http.registerRoute(route);
-        activatedRoutes.push(route);
+        const previousRoute = previousById.get(route.id);
+        const target = previousRoute && this.routeTargets.get(previousRoute);
+        if (previousRoute && target && this.canReuseRoute(previousRoute, route)) {
+          activatedRoutes.push(previousRoute);
+          targetUpdates.push({ target, route });
+          continue;
+        }
+
+        const monitoredRoute = this.monitorRoute(module.name, route);
+        this.context.http.registerRoute(monitoredRoute);
+        activatedRoutes.push(monitoredRoute);
+        if (previousRoute) {
+          replacedRoutes.push(previousRoute);
+        } else {
+          addedRoutes.push(monitoredRoute);
+        }
+      }
+
+      for (const route of previousRoutes) {
+        if (!nextIds.has(route.id)) {
+          this.context.http.unregisterRoute(route.id);
+          removedRoutes.push(route);
+        }
+      }
+
+      for (const update of targetUpdates) {
+        update.target.route = update.route;
       }
     } catch (error) {
       const rollbackErrors: unknown[] = [];
 
-      for (const route of activatedRoutes.reverse()) {
+      for (const route of removedRoutes.reverse()) {
         try {
-          this.context.http.unregisterRoute(route.id);
+          this.context.http.registerRoute(route);
         } catch (rollbackError) {
           rollbackErrors.push(rollbackError);
         }
       }
 
-      for (const route of previousRoutes) {
+      for (const route of replacedRoutes.reverse()) {
         try {
           this.context.http.registerRoute(route);
+        } catch (rollbackError) {
+          rollbackErrors.push(rollbackError);
+        }
+      }
+
+      for (const route of addedRoutes.reverse()) {
+        try {
+          this.context.http.unregisterRoute(route.id);
         } catch (rollbackError) {
           rollbackErrors.push(rollbackError);
         }
@@ -504,8 +552,8 @@ export class Kernel<Request = unknown, Response = unknown> extends EventEmitter 
       throw error;
     }
 
-    const metadata = this.registry.register(module, routes);
-    this.monitor.registerModule(module.name, module.version, routes.length);
+    const metadata = this.registry.register(module, activatedRoutes);
+    this.monitor.registerModule(module.name, module.version, routes);
 
     if (previous?.module.dispose) {
       try {
@@ -519,6 +567,48 @@ export class Kernel<Request = unknown, Response = unknown> extends EventEmitter 
     }
 
     return metadata;
+  }
+
+  private monitorRoute(
+    moduleName: string,
+    route: RouteDefinition<Request, Response>
+  ): RouteDefinition<Request, Response> {
+    const target: RouteTarget<Request, Response> = { route };
+    const monitoredRoute: RouteDefinition<Request, Response> = Object.freeze({
+      id: route.id,
+      method: route.method,
+      path: route.path,
+      get version() {
+        return target.route.version;
+      },
+      get status() {
+        return target.route.status;
+      },
+      handler: async (request: Request, response: Response) => {
+        this.monitor.startRequest(moduleName, route.id);
+        const startedAt = performance.now();
+        let failed = false;
+        try {
+          return await target.route.handler(request, response);
+        } catch (error) {
+          failed = true;
+          throw error;
+        } finally {
+          this.monitor.completeRequest(moduleName, route.id, performance.now() - startedAt, failed);
+        }
+      }
+    });
+    this.routeTargets.set(monitoredRoute, target);
+    return monitoredRoute;
+  }
+
+  private canReuseRoute(
+    current: RouteDefinition<Request, Response>,
+    next: RouteDefinition<Request, Response>
+  ): boolean {
+    return current.method === next.method
+      && current.path === next.path
+      && current.status === next.status;
   }
 
   private async unloadInternal(moduleName: string): Promise<boolean> {

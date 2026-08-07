@@ -5,6 +5,7 @@ Framework-agnostic kernel for runtime module management in Node.js. Load, reload
 ## Features
 
 - Hot-reload modules at runtime
+- Endpoint-level route diffing keeps unchanged routes mounted during reloads
 - Exclusive operation queue (no torn writes across `load`/`reload`/`unload`)
 - Cross-module route ownership checks
 - Built-in monitoring dashboard (HTTP) and in-process snapshot
@@ -77,6 +78,11 @@ new Kernel(context, config?);
 
 All mutating operations (`load`, `reload`, `unload`, `stop`) run through a single exclusive queue.
 
+Reloads are applied per endpoint. Routes whose `id`, method, path, and success status stay
+the same keep their mounted proxy and switch to the new handler atomically. New or structurally
+changed routes are registered before deleted routes are removed, so updating one endpoint does
+not unmount sibling endpoints.
+
 ### `createRuntimeContext`
 
 ```ts
@@ -105,13 +111,18 @@ new Kernel(context, {
     enabled: true,
     host: '127.0.0.1',
     port: 5000,
-    refreshInterval: 3000 // ms, 500..60000
+    refreshInterval: 3000, // ms, 500..60000
+    authFile: '.hivelet/dashboard-auth.json',
+    sessionTtl: 43200000 // 12 hours
   },
   buildHistoryLimit: 100 // 1..1000
 });
 ```
 
 The dashboard only binds when `enabled: true`. `port: 0` lets the OS pick a free port.
+On first start Hivelet generates a strong password and writes it once through the kernel
+logger. Only a random-salt SHA-512 verifier is persisted in `authFile`; removing that file
+rotates the password on the next start.
 
 ## Monitoring
 
@@ -124,14 +135,16 @@ const snapshot = kernel.status();
 
 - `builds` — recent build records (id, moduleName, modulePath, status, duration, error)
 - `modules` — currently active modules (name, version, routeCount, status, loadedAt)
-- `stats` — totals (totalBuilds, successfulBuilds, failedBuilds, buildingNow, activeModules, uptime)
+- `endpoints` — per-route request volume, active requests, errors, and average/P95/max latency
+- `stats` — build, module, request-per-minute, error-rate, and response-time totals
 - `generatedAt` — ISO timestamp
 
 The HTTP dashboard serves the same data:
 
-- `GET /api/state` — JSON snapshot
+- `GET /api/state` — authenticated JSON snapshot
 - `GET /health` — liveness probe
-- `GET /` — built-in dark UI
+- `GET /` — authenticated full-screen draggable flow UI
+- `POST /api/login` / `POST /api/logout` — dashboard session lifecycle
 
 ## Adapters
 
