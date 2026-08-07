@@ -1,9 +1,13 @@
 import type { Request, Response } from 'express';
 import type { Kernel } from '@hivelet/core';
+import { tailLogs } from './logger';
 
 export function registerAdminRoutes(kernel: Kernel<Request, Response>): {
   listModules(req: Request, res: Response): void;
   getStatus(req: Request, res: Response): void;
+  getLogs(req: Request, res: Response): void;
+  getHistory(req: Request, res: Response): void;
+  rollbackModule(req: Request, res: Response): Promise<void>;
   reloadModule(req: Request, res: Response): Promise<void>;
   loadModule(req: Request, res: Response): Promise<void>;
   unloadModule(req: Request, res: Response): Promise<void>;
@@ -19,7 +23,43 @@ export function registerAdminRoutes(kernel: Kernel<Request, Response>): {
   }
 
   function getStatus(_req: Request, res: Response): void {
-    res.json(kernel.status());
+    res.json({ ...kernel.status(), autonomous: kernel.autonomous });
+  }
+
+  function getLogs(req: Request, res: Response): void {
+    const limit = Math.min(Math.max(Number(req.query.limit ?? 100) || 100, 1), 500);
+    res.json({ limit, records: tailLogs(limit) });
+  }
+
+  function getHistory(req: Request, res: Response): void {
+    const name = readModuleName(req);
+    if (name === undefined) {
+      res.status(400).json({ success: false, error: 'Invalid module name' });
+      return;
+    }
+    res.json({ module: name, revisions: kernel.history(name) });
+  }
+
+  async function rollbackModule(req: Request, res: Response): Promise<void> {
+    const name = readModuleName(req);
+    if (name === undefined) {
+      res.status(400).json({ success: false, error: 'Invalid module name' });
+      return;
+    }
+
+    const raw = (req.body as { revision?: unknown } | undefined)?.revision;
+    const revision = raw === undefined ? undefined : Number(raw);
+    if (revision !== undefined && !Number.isInteger(revision)) {
+      res.status(400).json({ success: false, error: 'revision must be an integer' });
+      return;
+    }
+
+    try {
+      const metadata = await kernel.rollback(name, revision);
+      res.json({ success: true, module: metadata.module.name, version: metadata.module.version });
+    } catch (error) {
+      respondError(res, error);
+    }
   }
 
   async function reloadModule(req: Request, res: Response): Promise<void> {
@@ -54,7 +94,22 @@ export function registerAdminRoutes(kernel: Kernel<Request, Response>): {
     }
   }
 
-  return { listModules, getStatus, reloadModule, loadModule, unloadModule };
+  return {
+    listModules,
+    getStatus,
+    getLogs,
+    getHistory,
+    rollbackModule,
+    reloadModule,
+    loadModule,
+    unloadModule
+  };
+}
+
+function readModuleName(req: Request): string | undefined {
+  const name = String(req.params.module ?? '');
+  const safe = name.replace(/[^a-zA-Z0-9_-]/g, '');
+  return safe.length > 0 && safe === name ? safe : undefined;
 }
 
 function resolveModulePath(name: string): string {

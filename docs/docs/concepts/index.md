@@ -1,6 +1,7 @@
 # Concepts
 
-Hivelet'in ana kavramlarına hızlı bir bakış. Her sayfa kendi başına okunabilir; sırayla okumak zorunda değilsiniz.
+A quick tour of Hivelet's building blocks. Each page stands on its own — you do not have
+to read them in order.
 
 <div class="grid cards" markdown>
 
@@ -8,38 +9,54 @@ Hivelet'in ana kavramlarına hızlı bir bakış. Her sayfa kendi başına okuna
 
     ---
 
-    Yaşam döngüsü, atomik reload, kuyruklama.
+    Lifecycle, atomic reload, queueing, events.
 
 -   :material-puzzle:{ .lg .middle } **[Modules](modules.md)**
 
     ---
 
-    Modül sözleşmesi, route kayıt kuralları, `dispose()`.
+    The module contract, route registration rules, `dispose()`.
 
 -   :material-router:{ .lg .middle } **[Adapters](adapters.md)**
 
     ---
 
-    Framework bağımsızlığı — Express ve Nest.
+    Framework independence — Express and Nest.
+
+-   :material-robot:{ .lg .middle } **[Autonomy](autonomy.md)**
+
+    ---
+
+    The filesystem supervisor and the version store.
+
+-   :material-text-box-outline:{ .lg .middle } **[Logging](logging.md)**
+
+    ---
+
+    Levels, scopes, structured fields, transports.
 
 -   :material-monitor-dashboard:{ .lg .middle } **[Monitoring](monitoring.md)**
 
     ---
 
-    Build kayıtları, snapshot API, dashboard.
+    Build records, the snapshot API, the dashboard.
 
 -   :material-tune:{ .lg .middle } **[Configuration](configuration.md)**
 
     ---
 
-    Kernel config, dashboard, validation kuralları.
+    Kernel config, defaults, validation rules.
 
 </div>
 
-## Tasarım ilkeleri
+## Design principles
 
-1. **Açık yaşam döngüsü.** Her kaynağın ne zaman açıldığı ve ne zaman kapandığı bellidir.
-2. **Geri alma her zaman mümkün.** Reload başarısız olursa sistem eski halinde kalır.
-3. **Framework'ten bağımsız sözleşme.** `HttpAdapter` sayesinde Express dışında da çalışır.
-4. **Sıfır gizli yan etki.** `Kernel` constructor'ı network port'u açmaz; `await start()` çağrısı gerekir.
-5. **Test edilebilir.** `Dashboard`, `Monitor`, `Kernel` hepsi tek tek unit test edilebilir.
+1. **Explicit lifecycle.** It is always clear when a resource is opened and when it is
+   closed.
+2. **Undo is always possible.** If a reload fails the system stays on the previous
+   version, and recorded revisions let you go back further on demand.
+3. **A framework-neutral contract.** `HttpAdapter` means Hivelet is not tied to Express.
+4. **No hidden side effects.** The `Kernel` constructor opens no port and touches no
+   filesystem; `await start()` does that work.
+5. **Testable.** `Kernel`, `Monitor`, `Dashboard`, `ModuleWatcher`, `VersionStore`, and the
+   logger are each unit-testable in isolation.

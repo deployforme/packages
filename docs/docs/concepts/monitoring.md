@@ -1,17 +1,20 @@
 # Monitoring
 
-Hivelet, modül yükleme ve çalışma durumunu izlemek için iki şey sunar:
+Hivelet offers two things for observing module loading and health:
 
-1. **`Monitor`** — bellek-içi build kayıtları ve aktif modül snapshot'ı.
-2. **`Dashboard`** — bu state'i HTTP üzerinden yayınlayan küçük bir server.
+1. **`Monitor`** — in-memory build records and an active module snapshot.
+2. **`Dashboard`** — a small server that publishes that state over HTTP.
+
+For request-level and application-level detail, see [Logging](logging.md); the two are
+complementary, and both are on by default in the reference app.
 
 ## Monitor
 
-`Monitor` her `load` / `reload` çağrısında bir build kaydı açar:
+`Monitor` opens a build record on every `load` / `reload`:
 
 ```ts
 interface BuildRecord {
-  id: string;                  // benzersiz UUID
+  id: string;                  // unique UUID
   moduleName: string;
   modulePath: string;
   status: 'building' | 'success' | 'error';
@@ -22,7 +25,7 @@ interface BuildRecord {
 }
 ```
 
-`Monitor.snapshot()` döner:
+`Monitor.snapshot()` returns:
 
 ```ts
 interface MonitoringSnapshot {
@@ -38,70 +41,78 @@ interface MonitoringStats {
   failedBuilds: number;
   buildingNow: number;
   activeModules: number;
-  uptime: number;              // saniye
+  uptime: number;              // ms since the monitor started
 }
 ```
 
-### Build geçmişi sınırı
+### Build history limit
 
-`buildHistoryLimit` yapılandırması bellek-içi kayıt sayısını sınırlar (varsayılan: 100). Aşıldığında en eski kayıtlar düşer.
+`buildHistoryLimit` caps how many records are kept in memory (default: 100). Beyond it,
+the oldest records are dropped. This is a short-term view — for durable history of what
+code was running, use the [version store](autonomy.md#the-version-store).
 
-### Snapshot ne zaman alınır?
+### When is a snapshot taken?
 
-- Dashboard `GET /api/state` her poll'da yeni snapshot alır.
-- Host uygulaması `kernel.status()` ile istediği zaman alabilir.
+- The dashboard takes a fresh one on every `GET /api/state` poll.
+- Your host application can take one at any time with `kernel.status()`.
 
 ## Dashboard
 
-`Dashboard`, `Monitor.snapshot()`'ı HTTP üzerinden yayınlayan küçük bir `http.Server`'dır.
+`Dashboard` is a small `http.Server` publishing `Monitor.snapshot()`.
 
-### Endpoint'ler
+### Endpoints
 
-| Method | Path           | Yanıt                                       |
+| Method | Path           | Response                                    |
 | ------ | -------------- | ------------------------------------------- |
 | GET    | `/`            | HTML (editorial dark UI)                    |
-| GET    | `/api/state`   | JSON — `MonitoringSnapshot`                |
-| GET    | `/health`      | JSON — `{"status":"ok"}`                   |
-| HEAD   | `/api/state`   | Aynı `/api/state`, gövde yok               |
+| GET    | `/api/state`   | JSON — `MonitoringSnapshot`                 |
+| GET    | `/health`      | JSON — `{"status":"ok"}`                    |
+| HEAD   | `/api/state`   | As `/api/state`, without a body             |
 
-Diğer tüm yollar `404` döner. `POST` / `PUT` vb. `405 Method Not Allowed` + `Allow` header'ı döner.
+Every other path returns `404`. `POST` / `PUT` and friends return `405 Method Not Allowed`
+with an `Allow` header.
 
-### Güvenlik
+### Security
 
-- **CSP nonce**: inline script'ler için per-request nonce üretilir; `script-src 'self' 'nonce-...'`.
+- **CSP nonce**: a per-request nonce is generated for inline scripts;
+  `script-src 'self' 'nonce-...'`.
 - `X-Content-Type-Options: nosniff`
 - `X-Frame-Options: DENY`
 - `Referrer-Policy: no-referrer`
 - `Cross-Origin-Resource-Policy: same-origin`
 - `Cache-Control: no-store`
 
-### Render
+### Rendering
 
-Dashboard HTML'i tüm dinamik verileri `textContent` ile DOM'a yazar — `innerHTML` kullanmaz. Bu nedenle kötü niyetli modül adı veya hata mesajı XSS'e yol açamaz.
+The dashboard writes all dynamic data into the DOM with `textContent` — never
+`innerHTML`. A hostile module name or error message therefore cannot cause XSS.
 
-UI:
+The UI has:
 
-- Üstte 4 istatistik kartı (total, success, failed, building).
-- Ortada aktif modüller listesi (filtrelenebilir, sayfalanabilir).
-- Altta build geçmişi (filtrelenebilir, sayfalanabilir).
-- Visibility-change-aware polling: sekme görünür değilken polling durur.
+- Four stat cards at the top (total, success, failed, building).
+- The active module list in the middle (filterable, paginated).
+- Build history at the bottom (filterable, paginated).
+- Visibility-aware polling: it stops while the tab is hidden.
 
-### Yapılandırma
+### Configuration
 
 ```ts
 new Kernel(context, {
   dashboard: {
     enabled: true,
-    host: '127.0.0.1',         // sadece loopback — uzaktan erişim yok
+    host: '127.0.0.1',         // loopback only — no remote access
     port: 5000,
     refreshInterval: 3000      // ms
   }
 });
 ```
 
-`refreshInterval` 500–60000 ms arasında olmalı.
+`refreshInterval` must be between 500 and 60000 ms. Keep `host` on loopback and put a
+reverse proxy with authentication in front of it if you need remote access; the dashboard
+has no authentication of its own.
 
-## Bir sonraki adım
+## Next
 
-- [Configuration](configuration.md) — `KernelConfig` ayrıntıları
-- [Guides → Zero-downtime deployment](../guides/zero-downtime.md)
+- [Logging](logging.md) — structured logs alongside the dashboard
+- [Configuration](configuration.md) — `KernelConfig` in detail
+- [Guides → Zero-downtime deployment](../tr/guides/zero-downtime.md)

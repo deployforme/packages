@@ -2,25 +2,29 @@
 
 **Safe runtime module management for modern Node.js applications.**
 
-Hivelet, bir Node.js uygulamasının çalışma zamanında HTTP route'larını, servislerini veya komple modülleri **çökmeden, state kaybetmeden ve servis kesintisi vermeden** değiştirmenizi sağlayan küçük bir runtime katmanıdır.
+Hivelet is a small runtime layer that lets a Node.js application swap HTTP routes,
+services, or whole feature modules **without crashing, without losing state, and without
+dropping a single request**.
 
-## Neden Hivelet?
+## Why Hivelet?
 
-| Sorun                                            | Hivelet nasıl çözer                              |
-| ------------------------------------------------ | ------------------------------------------------ |
-| Bir route'un kodunu değiştirmek için restart     | `kernel.reload(path)` ile saniye altı hot-reload |
-| Eski modül kaldırılırken gelen istekler düşer    | Atomik route swap                                |
-| Modüller arası paylaşılan state kaybolur         | Container + `dispose()` hook'ları               |
-| Reload sonrası hangi modüllerin durumu ne?       | Yerleşik monitoring dashboard                   |
-| Restart sırasında dashboard kapanmaz             | `kernel.stop()` → tüm kaynakları söker          |
+| Problem                                                | How Hivelet solves it                                        |
+| ------------------------------------------------------ | ------------------------------------------------------------ |
+| Restarting the process to change one route's code       | Sub-second hot reload — or no call at all in autonomous mode  |
+| Requests dropped while the old module is torn down      | Atomic route swap with automatic rollback on failure          |
+| State shared between modules disappears on reload       | Dependency container plus `dispose()` hooks                   |
+| No idea which modules are healthy after a reload        | Built-in monitoring dashboard and structured logs             |
+| A bad deploy needs a full redeploy to undo              | On-disk version history and one-call `rollback()`             |
 
-## Üç temel söz
+## Three guarantees
 
-1. **Modüller izoledir.** Her modül kendi route'larını, kendi state'ini ve kendi temizleme sorumluluğunu taşır.
-2. **Kernel her şeyi sıralar.** Aynı anda iki `load()` çağrılırsa birbirini ezmez; kuyruğa alınır.
-3. **Hata kontrollüdür.** Reload başarısız olursa eski modül yerinde kalır; sistem hiçbir zaman modülsüz kalmaz.
+1. **Modules are isolated.** Each module owns its routes, its state, and its cleanup.
+2. **The kernel serializes everything.** Two concurrent `load()` calls queue instead of
+   racing each other.
+3. **Failure is contained.** If a reload fails, the previous module stays in place — the
+   system is never left without a module.
 
-## İlk bakış
+## First look
 
 ```ts
 import express from 'express';
@@ -29,47 +33,51 @@ import { ExpressAdapter } from '@hivelet/adapter-express';
 
 const app = express();
 const adapter = new ExpressAdapter(app);
-const kernel = new Kernel(createRuntimeContext(adapter));
+
+const kernel = new Kernel(createRuntimeContext(adapter), {
+  autonomous: { enabled: true, paths: ['./dist/modules'] }
+});
 
 await kernel.start();
-await kernel.load('./modules/users.module.js');
-await kernel.load('./modules/orders.module.js');
-
 app.listen(3000);
 ```
 
-Sonra, `users.module.js`'i düzenleyip:
+That is the whole setup. `start()` discovers every module under `./dist/modules`, loads
+them, and keeps watching the directory. Edit `users.module.js` and save — the kernel
+reloads it, swaps the routes atomically, and records a new revision. No restart, no
+reload endpoint, no `nodemon`.
 
-```bash
-curl -X POST http://localhost:3000/admin/reload/users
-```
+If you prefer explicit control, autonomous mode is opt-in; `kernel.load(path)` and
+`kernel.reload(path)` still work exactly as before.
 
-… yaparsınız. Sistem yeni versiyonu yükler, eski route'ları söker, yeni route'ları bağlar ve hiçbir istek kaybolmaz.
+## Packages
 
-## Paketler
+| Package                       | Role                                                             |
+| ----------------------------- | ---------------------------------------------------------------- |
+| `@hivelet/core`               | Kernel, registry, loader, runtime context, logging, monitoring    |
+| `@hivelet/adapter-express`    | Route register/unregister on top of Express                       |
+| `@hivelet/adapter-nest`       | Adapter for NestJS (Express platform)                             |
+| `@hivelet/taskboard` *(demo)* | Reference application — a real task management API                |
 
-| Paket                         | Rol                                                       |
-| ----------------------------- | --------------------------------------------------------- |
-| `@hivelet/core`               | Kernel, registry, loader, runtime context, monitoring      |
-| `@hivelet/adapter-express`    | Express üzerinde route register/unregister               |
-| `@hivelet/adapter-nest`       | NestJS (Express platform) için adapter                    |
-| `@hivelet/taskboard` *(demo)* | Referans uygulama — gerçek bir görev yönetim API'si     |
+## When should you use Hivelet?
 
-## Ne zaman Hivelet kullanılır?
+- Your application is made of several feature modules and you want to develop them in
+  isolation.
+- You want an edit-save-see-it-live loop in development without losing in-memory state.
+- You need to ship or withdraw a single feature in production without a full restart.
+- You want a recorded history of what code was running, and the ability to roll back.
 
-- Uygulamanız birden fazla "özellik modülü" içeriyor ve bunları izole geliştirmek istiyorsanız.
-- Zero-downtime deployment hedefiniz varsa.
-- Runtime'da modül ekleyip çıkarmanız gerekiyorsa.
-- Modüller arası sözleşmeyi typed bir API ile korumak istiyorsanız.
+## When should you not?
 
-## Ne zaman Hivelet **kullanılmaz**?
+- The change touches bootstrap code, framework middleware, or native dependencies. Those
+  still need a restart.
+- You need process-level isolation or a security boundary between modules. Modules share
+  the host process; Hivelet is not a sandbox.
 
-- Uygulamanız tek parçalı, küçük ve hâlâ sık sık restart edilebiliyorsa — basit bir Express/Nest uygulaması yeterlidir.
-- ESM modüllerini hot-reload etmeniz gerekiyorsa — Hivelet'in loader'ı şu an CommonJS kullanır.
-- HTTP dışında (örneğin gRPC, WebSocket-only, CLI) bir protokol üzerinde çalışıyorsanız — kendi `HttpAdapter` uyarlamanızı yazmanız gerekir.
+## Where to next
 
-## Sırada ne var?
-
-- [Getting started](getting-started.md) — 5 dakikada çalışan bir örnek
-- [Concepts → Kernel](concepts/kernel.md) — `Kernel` yaşam döngüsü
-- [Examples → TaskBoard](examples/taskboard.md) — gerçek uygulama yürüyüşü
+- [Getting started](getting-started.md) — install and run the first module.
+- [Autonomy](concepts/autonomy.md) — remove the reload call entirely.
+- [Logging](concepts/logging.md) — structured, level-aware logs with transports.
+- [Versioning and rollback](tr/guides/zero-downtime.md) — history and undo.
+- [Concepts](concepts/index.md) — how the kernel, modules, and adapters fit together.

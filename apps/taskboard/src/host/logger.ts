@@ -1,26 +1,46 @@
-import type { Logger } from '@hivelet/core';
+import * as path from 'node:path';
+import {
+  ConsoleTransport,
+  FileTransport,
+  HiveletLogger,
+  MemoryTransport,
+  createLogger,
+  type LogLevel,
+  type LogRecord
+} from '@hivelet/core';
 
-export class StructuredLogger implements Logger {
-  constructor(private readonly tag: string = 'app') {}
+/** Kept in memory so `/admin/logs` can serve the recent tail without touching disk. */
+export const recentLogs = new MemoryTransport({ limit: 500 });
 
-  log(message: string): void {
-    process.stdout.write(`${this.format('info', message)}\n`);
-  }
+export interface HostLoggerOptions {
+  readonly level?: LogLevel;
+  readonly logFile?: string;
+}
 
-  warn(message: string): void {
-    process.stdout.write(`${this.format('warn', message)}\n`);
-  }
+/**
+ * The application logger: pretty output on a TTY, JSON everywhere else, a rotating file
+ * on disk, and an in-memory tail for the admin API. Level defaults to `HIVELET_LOG_LEVEL`.
+ */
+export function createHostLogger(options: HostLoggerOptions = {}): HiveletLogger {
+  const logFile = options.logFile ?? path.join(process.cwd(), 'logs', 'taskboard.log');
 
-  error(message: string): void {
-    process.stderr.write(`${this.format('error', message)}\n`);
-  }
+  return createLogger({
+    level: options.level,
+    scope: 'taskboard',
+    fields: { pid: process.pid },
+    redact: ['password', 'token', 'authorization'],
+    transports: [
+      new ConsoleTransport(),
+      new FileTransport({ filePath: logFile, maxSize: 5 * 1024 * 1024, maxFiles: 5 }),
+      recentLogs
+    ],
+    onTransportError: error => {
+      process.stderr.write(`log transport failed: ${String(error)}\n`);
+    }
+  });
+}
 
-  private format(level: 'info' | 'warn' | 'error', message: string): string {
-    return JSON.stringify({
-      ts: new Date().toISOString(),
-      level,
-      tag: this.tag,
-      message
-    });
-  }
+/** Most recent records first, for the admin log endpoint. */
+export function tailLogs(limit = 100): readonly LogRecord[] {
+  return recentLogs.list().slice(-limit).reverse();
 }

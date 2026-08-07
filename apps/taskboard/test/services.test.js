@@ -10,7 +10,7 @@ const { TaskStore } = require('../dist/services/task-store');
 const { TagStore } = require('../dist/services/tag-store');
 const { CommentStore } = require('../dist/services/comment-store');
 const { NotificationService } = require('../dist/services/notification-service');
-const { StructuredLogger } = require('../dist/host/logger');
+const { MemoryTransport, createLogger } = require('@hivelet/core');
 
 test('TaskStore: create → get → list', () => {
   const store = new TaskStore();
@@ -64,7 +64,7 @@ test('CommentStore: listForTask only returns comments for that task', () => {
 });
 
 test('NotificationService: records notify calls', () => {
-  const logger = new StructuredLogger('test');
+  const logger = createLogger({ transports: [new MemoryTransport()] });
   const svc = new NotificationService(logger);
   svc.notify('task-created', { title: 'foo' });
   svc.notify('task-completed', { title: 'bar', detail: 'ok' });
@@ -75,11 +75,18 @@ test('NotificationService: records notify calls', () => {
   assert.equal(history[1].detail, 'ok');
 });
 
-test('StructuredLogger: does not throw and produces JSON-shaped output', () => {
-  const logger = new StructuredLogger('test');
-  assert.doesNotThrow(() => logger.log('hello'));
-  assert.doesNotThrow(() => logger.warn('careful'));
-  assert.doesNotThrow(() => logger.error('boom'));
+test('logger: records every level with scope and fields', () => {
+  const memory = new MemoryTransport();
+  const logger = createLogger({ scope: 'taskboard', transports: [memory] });
+
+  logger.log('hello');
+  logger.warn('careful');
+  logger.error('boom', { module: 'tasks' });
+
+  const records = memory.list();
+  assert.deepEqual(records.map(record => record.level), ['info', 'warn', 'error']);
+  assert.equal(records[0].scope, 'taskboard');
+  assert.deepEqual(records[2].fields, { module: 'tasks' });
 });
 
 test('module file: loads a runtime module that registers routes via context.container', async () => {
@@ -121,7 +128,7 @@ test('module file: loads a runtime module that registers routes via context.cont
     };
 
     const mod = require(modulePath);
-    const logger = new StructuredLogger('test');
+    const logger = createLogger({ transports: [new MemoryTransport()] });
     await mod.register({ http: fakeHttp, container, logger });
 
     assert.equal(mod.name, 'demo');

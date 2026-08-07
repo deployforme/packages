@@ -1,8 +1,9 @@
 # Modules
 
-Bir **modül**, runtime'da yüklenen, izole bir özellik birimidir. Tipik olarak bir dizi HTTP route, bazı servis referansları ve isteğe bağlı bir `dispose` hook'undan oluşur.
+A **module** is an isolated unit of functionality loaded at runtime. Typically it is a set
+of HTTP routes, a few service references, and an optional `dispose` hook.
 
-## Dosya yapısı
+## File layout
 
 ```
 src/modules/
@@ -11,15 +12,18 @@ src/modules/
 └── orders.module.js
 ```
 
-- Dosya adı `<modül-adı>.module.js` formundadır.
-- CommonJS (`module.exports`) kullanılır; loader `require()` ile yükler.
-- Build çıktısı (`dist/modules/`) dosyaları build sırasında kopyalanır.
+- Files are named `<module-name>.module.js`.
+- They are CommonJS (`module.exports`); the loader uses `require()`.
+- Build output (`dist/modules/`) is copied during the build step.
 
-## Sözleşme
+In autonomous mode the whole directory is watched, so this layout is also the unit of
+discovery — dropping a new `.module.js` file in is enough to load it.
+
+## The contract
 
 ```ts
 interface RuntimeModule<Request = unknown, Response = unknown> {
-  readonly name: string;                                     // benzersiz, [a-z0-9-_]
+  readonly name: string;                                     // unique, [a-z0-9-_]
   readonly version: string;                                  // semver
   register(context: RuntimeContext<Request, Response>): Awaitable<void>;
   dispose?(): Awaitable<void>;
@@ -36,65 +40,73 @@ module.exports = {
   },
 
   dispose() {
-    // abonelikleri, timer'ları, açık bağlantıları kapat
+    // close subscriptions, timers, open connections
   }
 };
 ```
 
-### Kurallar
+### Rules
 
-- `name` ve `version` zorunludur, boş olamaz.
-- `register` async olabilir; kernel `await` eder.
-- `dispose` opsiyoneldir; varsa async olabilir ve kernel `await` eder.
-- Modülün kendi iç state'i (örn: closure değişkenleri) **hot-reload'da sıfırlanır**, çünkü dosya `require.cache`'ten silinip yeniden yüklenir.
+- `name` and `version` are required and must be non-empty.
+- `register` may be async; the kernel awaits it.
+- `dispose` is optional, may be async, and is awaited.
+- A module's own internal state (closure variables, for example) is **reset on hot
+  reload**, because the file is dropped from `require.cache` and loaded again. State that
+  must survive belongs in the container.
 
-## Route tanımlama
+## Defining routes
 
 ```js
 context.http.registerRoute({
-  id: 'users-list',          // modül içinde benzersiz
+  id: 'users-list',          // unique within the module
   method: 'GET',
   path: '/users',
   handler: async (req) => {
-    return { users: [...] }; // otomatik res.json()
+    return { users: [...] }; // automatically sent with res.json()
   }
 });
 ```
 
-| Alan       | Tip            | Açıklama                                              |
-| ---------- | -------------- | ----------------------------------------------------- |
-| `id`       | `string`       | Modül ad alanında benzersiz. Aynı `id` ile kayıt hata fırlatır. |
-| `method`   | `HttpMethod`   | `GET \| POST \| PUT \| DELETE \| PATCH \| HEAD \| OPTIONS` |
-| `path`     | `string`       | Express tarzı path sözdizimi (`/users/:id`).          |
-| `handler`  | `RouteHandler` | `(req, res) => Awaitable<Result \| void>`             |
+| Field     | Type           | Notes                                                        |
+| --------- | -------------- | ------------------------------------------------------------ |
+| `id`      | `string`       | Unique. Registering the same `id` twice throws.              |
+| `method`  | `HttpMethod`   | `GET \| POST \| PUT \| DELETE \| PATCH \| HEAD \| OPTIONS`   |
+| `path`    | `string`       | Express-style path syntax (`/users/:id`). Must start with `/`. |
+| `handler` | `RouteHandler` | `(req, res) => Awaitable<Result \| void>`                    |
 
-### Handler dönüş kuralları
+### Handler return rules
 
 ```js
-// 1) Obje döndür → otomatik res.json()
+// 1) Return an object → sent with res.json()
 handler: async () => ({ count: 3 });
 
-// 2) Hiçbir şey döndürme → kendin res.status(...).json(...) çağır
+// 2) Return nothing → you call res.status(...).json(...) yourself
 handler: async (req, res) => {
   res.status(404).json({ error: 'not found' });
 };
 
-// 3) Yan etkili + sonra döndür
+// 3) Side effect first, then return
 handler: async (req, res) => {
   res.setHeader('X-Total', '42');
   return { items: [...] };
 };
 ```
 
-### Hata durumları
+### Failure modes
 
-Bir handler hata fırlatırsa Express error middleware'e düşer. Kernel bunu yakalamaz; HTTP response hata döner. Ama build kaydı hâlâ `success` olur (handler çalıştı, runtime hatası route'un kendisinde değil).
+If a handler throws, the error reaches the Express error middleware. The kernel does not
+intercept it and the build record stays `success` — the module loaded fine, the fault is in
+one request.
 
-Eğer `register()` içinde bir route kaydı sırasında hata olursa (örn: çakışma, yanlış path sözdizimi), build kaydı `error` olur ve eski modül yerinde kalır.
+If `register()` throws — a route conflict, a malformed path, a syntax error in the file —
+the build record is `error`, **the previous version keeps serving traffic**, and nothing is
+swapped. In autonomous mode the failure is retried and then reported through the
+`module:failed` event.
 
-## Container kullanımı
+## Using the container
 
-Modüller servislerini **container** üzerinden alır. Host, container'ı kurar; modüller sadece okur.
+Modules get their services from the **container**. The host sets it up; modules only read
+from it.
 
 ```js
 register(context) {
@@ -105,17 +117,18 @@ register(context) {
 ```
 
 ```ts
-// host tarafı (index.ts)
+// host side (index.ts)
 const container = new SimpleContainer();
 container.register('userStore', new UserStore());
 const kernel = new Kernel(createRuntimeContext(adapter, { container }));
 ```
 
-Detaylar: [Guides → Dependency injection](../guides/dependency-injection.md).
+Because the container lives in the host and not the module, its contents survive every
+reload. Details: [Guides → Dependency injection](../tr/guides/dependency-injection.md).
 
-## Disposable kaynaklar
+## Disposable resources
 
-Bir modülün açtığı her kaynak, `dispose()` içinde kapatılmalıdır:
+Everything a module opens must be closed in `dispose()`:
 
 ```js
 let unsubscribe = null;
@@ -135,18 +148,22 @@ module.exports = {
 };
 ```
 
-Bu örüntü, hot-reload sırasında eski modülün event listener'larının sızmasını engeller.
+This is what stops the old module's event listeners from leaking across a hot reload. A
+module that forgets it will accumulate one listener per reload.
 
-## Birden fazla modül
+## Multiple modules
 
-Modüller birbirleriyle doğrudan konuşmaz. İletişim iki yolla olur:
+Modules do not talk to each other directly. Communication happens two ways:
 
-1. **Container üzerinden paylaşılan servisler** (önerilen).
-2. **Event bus / store** (modülün context'inden alınır).
+1. **Shared services through the container** (recommended).
+2. **An event bus or store**, itself obtained from the context.
 
-Doğrudan `require()` ile diğer modülü çekmek anti-pattern'dir; modüller arası sözleşmeyi zayıflatır ve hot-reload sırasında tutarsızlık yaratır.
+Pulling in another module with a direct `require()` is an anti-pattern: it weakens the
+contract between modules and produces inconsistencies during hot reload, because the two
+copies can be at different versions.
 
-## Bir sonraki adım
+## Next
 
-- [Adapters](adapters.md) — Express ve Nest için adaptörler
-- [Guides → Hot reload](../guides/hot-reload.md) — gerçek bir hot-reload senaryosu
+- [Adapters](adapters.md) — the Express and Nest adapters
+- [Guides → Hot reload](../tr/guides/hot-reload.md) — a real reload walkthrough
+- [Concepts → Autonomy](autonomy.md) — reloads without a reload call

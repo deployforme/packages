@@ -69,9 +69,28 @@ test('resolveKernelConfig applies immutable defaults', () => {
       port: 0,
       refreshInterval: 3000
     },
-    buildHistoryLimit: 100
+    buildHistoryLimit: 100,
+    autonomous: {
+      enabled: false,
+      paths: [],
+      extensions: ['.js', '.cjs', '.mjs'],
+      ignore: [],
+      debounce: 150,
+      loadOnStart: true,
+      unloadOnDelete: true,
+      retries: 2,
+      retryDelay: 500,
+      autoRollback: false
+    },
+    versioning: {
+      enabled: true,
+      directory: '.hivelet/versions',
+      keep: 20
+    }
   });
   assert.equal(Object.isFrozen(config), true);
+  assert.equal(Object.isFrozen(config.autonomous), true);
+  assert.equal(Object.isFrozen(config.versioning), true);
   assert.equal(Object.isFrozen(config.dashboard), true);
 });
 

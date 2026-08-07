@@ -19,10 +19,25 @@ export interface HttpAdapter<Request = unknown, Response = unknown> {
   unregisterRoute(id: string): void;
 }
 
+export interface LogContextFields {
+  readonly [key: string]: unknown;
+}
+
+/**
+ * Minimal logging contract required by the kernel. The three legacy methods stay
+ * mandatory so existing implementations keep working; richer implementations such as
+ * `HiveletLogger` additionally provide levels, scoping and structured fields, which the
+ * kernel uses when they are present.
+ */
 export interface Logger {
-  log(message: string): void;
-  error(message: string): void;
-  warn(message: string): void;
+  log(message: string, fields?: LogContextFields): void;
+  error(message: string, fields?: LogContextFields, error?: unknown): void;
+  warn(message: string, fields?: LogContextFields): void;
+  trace?(message: string, fields?: LogContextFields): void;
+  debug?(message: string, fields?: LogContextFields): void;
+  info?(message: string, fields?: LogContextFields): void;
+  fatal?(message: string, fields?: LogContextFields, error?: unknown): void;
+  child?(scope: string, fields?: LogContextFields): Logger;
 }
 
 export type DependencyToken = string | symbol;

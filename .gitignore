@@ -5,3 +5,6 @@ dist
 .env
 .turbo
 /docs/site
+.hivelet
+logs
+.idea

@@ -88,24 +88,36 @@ nav:
       - Kernel: concepts/kernel.md
       - Modules: concepts/modules.md
       - Adapters: concepts/adapters.md
+      - Autonomy: concepts/autonomy.md
+      - Logging: concepts/logging.md
       - Monitoring: concepts/monitoring.md
       - Configuration: concepts/configuration.md
   - API reference:
-      - api/index.md
-      - Core: api/core.md
-      - Express adapter: api/adapter-express.md
-      - Nest adapter: api/adapter-nest.md
+      - tr/api/index.md
+      - Core: tr/api/core.md
+      - Express adapter: tr/api/adapter-express.md
+      - Nest adapter: tr/api/adapter-nest.md
   - Guides:
-      - guides/index.md
-      - Dependency injection: guides/dependency-injection.md
-      - Hot reload: guides/hot-reload.md
-      - Graceful shutdown: guides/graceful-shutdown.md
-      - Zero-downtime deployment: guides/zero-downtime.md
+      - tr/guides/index.md
+      - Dependency injection: tr/guides/dependency-injection.md
+      - Hot reload: tr/guides/hot-reload.md
+      - Graceful shutdown: tr/guides/graceful-shutdown.md
+      - Zero-downtime deployment: tr/guides/zero-downtime.md
   - Examples:
-      - examples/index.md
-      - TaskBoard: examples/taskboard.md
-      - Express app: examples/express.md
-      - Nest app: examples/nest.md
+      - tr/examples/index.md
+      - TaskBoard: tr/examples/taskboard.md
+      - Express app: tr/examples/express.md
+      - Nest app: tr/examples/nest.md
+  - Türkçe:
+      - tr/index.md
+      - Başlangıç: tr/getting-started.md
+      - Kavramlar:
+          - tr/concepts/index.md
+          - Kernel: tr/concepts/kernel.md
+          - Modüller: tr/concepts/modules.md
+          - Adapter'lar: tr/concepts/adapters.md
+          - Yapılandırma: tr/concepts/configuration.md
+          - İzleme: tr/concepts/monitoring.md
 
 extra:
   generator: false

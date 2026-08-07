@@ -1,8 +1,10 @@
 # Adapters
 
-Bir `HttpAdapter`, framework-spesifik route yönetimini Hivelet'in framework-bağımsız sözleşmesine çevirir. Kernel yalnızca adapter ile konuşur; Express veya Nest hakkında hiçbir şey bilmez.
+An `HttpAdapter` translates framework-specific route management into Hivelet's
+framework-neutral contract. The kernel only ever talks to the adapter; it knows nothing
+about Express or Nest.
 
-## Sözleşme
+## The contract
 
 ```ts
 interface HttpAdapter<Request = unknown, Response = unknown> {
@@ -11,7 +13,7 @@ interface HttpAdapter<Request = unknown, Response = unknown> {
 }
 ```
 
-İki metottan ibarettir. Bunu implemente eden her şey bir Hivelet adapter'ı olabilir — sadece Express değil.
+Two methods. Anything that implements them can be a Hivelet adapter — not just Express.
 
 ## Express adapter
 
@@ -20,29 +22,32 @@ import express from 'express';
 import { ExpressAdapter } from '@hivelet/adapter-express';
 
 const app = express();
-app.use(express.json()); // isteğe bağlı; adapter kendisi de ekler
+app.use(express.json()); // optional; the adapter adds it too
 
 const adapter = new ExpressAdapter(app);
 ```
 
-`ExpressAdapter` constructor'ı:
+The `ExpressAdapter` constructor:
 
-- Public `express.Router()` oluşturur ve `app.use(router)` ile bağlar.
-- `express.json()` middleware'ini otomatik ekler (POST/PUT/PATCH için body parse).
-- Hiçbir Express `_router` internal alanına dokunmaz.
+- Creates its own `express.Router()` and mounts it with `app.use(...)`.
+- Adds the `express.json()` middleware automatically, so POST/PUT/PATCH bodies parse.
+- Never touches Express's internal `_router` fields.
 
 ### Route lifecycle
 
 ```
 registerRoute(def)
-  → router[method](path, wrap(handler))
+  → the router is rebuilt with the new route included
 
 unregisterRoute(id)
-  → router.stack'ten id eşleşen layer çıkarılır
-  → hata olursa restore edilir
+  → the route is dropped and the router is rebuilt
+  → on failure the previous state is restored
 ```
 
-Detaylar: [API → Express adapter](../api/adapter-express.md).
+Rebuilding the router rather than mutating its stack is what makes the swap atomic: the
+old router keeps serving requests until the new one is fully constructed.
+
+Details: [API → Express adapter](../tr/api/adapter-express.md).
 
 ## Nest adapter
 
@@ -55,43 +60,49 @@ const app = await NestFactory.create(AppModule);
 const adapter = new NestExpressAdapter(app);
 ```
 
-### Platform kısıtı
+### Platform constraint
 
-`NestExpressAdapter` yalnız `@nestjs/platform-express` ile çalışır. `NestFactory.create(AppModule, new FastifyAdapter())` kullanılırsa constructor `TypeError` fırlatır:
+`NestExpressAdapter` only works with `@nestjs/platform-express`. If you use
+`NestFactory.create(AppModule, new FastifyAdapter())` the constructor throws a `TypeError`:
 
 ```
 NestExpressAdapter requires @nestjs/platform-express.
 Detected platform: fastify. Use a different Hivelet adapter or switch the Nest platform.
 ```
 
-Hivelet'in Fastify desteği **yoktur** ve olması da planlanmıyor; Express stack'i üzerinden adapter'ı paylaşmak daha sağlam.
+Hivelet has **no** Fastify support and none is planned; sharing the adapter through the
+Express stack is more robust.
 
-### Implementasyon stratejisi
+### Implementation strategy
 
-`NestExpressAdapter`, içeride `ExpressAdapter` ile aynı Express `Router()`'ını kullanır. Nest'in HTTP server'ı zaten Express tabanlı olduğu için aynı `app._router` üzerinde değil, **paylaşılan bir Router** üzerinde çalışır. Bu sayede:
+Internally `NestExpressAdapter` uses the same Express `Router()` as `ExpressAdapter`.
+Because Nest's HTTP server is already Express-based, it works on a **shared router**
+instead of `app._router`. As a result:
 
-- Nest decorator'ları normal şekilde çalışmaya devam eder.
-- Hivelet modüllerinin route'ları Nest middleware zincirine dahil olur.
-- Fastify yanlışlıkla kullanılırsa erken hata alınır.
+- Nest decorators keep working normally.
+- Hivelet module routes participate in the Nest middleware chain.
+- Accidentally using Fastify fails fast, at startup.
 
-## Kendi adapter'ınız
+## Writing your own adapter
 
-Farklı bir HTTP framework kullanıyorsanız `HttpAdapter`'ı implemente edin:
+If you use a different HTTP framework, implement `HttpAdapter`:
 
 ```ts
 class MyAdapter implements HttpAdapter {
   registerRoute(def: RouteDefinition): void {
-    // framework'e özel route kaydı
+    // framework-specific registration
   }
   unregisterRoute(id: string): void {
-    // framework'e özel route silme
+    // framework-specific removal
   }
 }
 ```
 
-İmplementasyon tamamen size aittir. Hivelet'in geri kalanı (kernel, monitoring, dashboard) framework-agnostic çalışır.
+Both methods must be synchronous and should throw rather than half-apply a change — the
+kernel relies on that to roll activation back cleanly. Everything else (kernel, autonomy,
+versioning, monitoring, dashboard) stays framework-agnostic.
 
-## Bir sonraki adım
+## Next
 
-- [API → Express adapter](../api/adapter-express.md) — tam API imzaları
-- [Examples → TaskBoard](../examples/taskboard.md) — Express adapter'ın gerçek kullanımı
+- [API → Express adapter](../tr/api/adapter-express.md) — full signatures
+- [Examples → TaskBoard](../tr/examples/taskboard.md) — the Express adapter in real use
