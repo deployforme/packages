@@ -1,6 +1,6 @@
 # @hivelet/core
 
-Framework-agnostic kernel for runtime module management in Node.js. Load, reload, and unload CommonJS modules without restarting the host process.
+Framework-agnostic runtime kernel for Node.js. Load, update, and remove HTTP modules without restarting the host process or interrupting unrelated endpoints.
 
 ## Features
 
@@ -34,7 +34,36 @@ await kernel.unload('user');
 app.listen(3000);
 ```
 
-## Module shape
+For new modules, prefer the decorator API over direct route registration:
+
+```ts
+import { Body, Controller, Get, Param, Post, Status, Version, defineModule } from '@hivelet/core';
+
+@Controller('/users')
+class UsersController {
+  @Get('/:id')
+  @Version('1.1.0')
+  find(@Param('id') id: string) {
+    return { id };
+  }
+
+  @Post()
+  @Status(201)
+  create(@Body() input: { name: string }) {
+    return input;
+  }
+}
+
+export default defineModule({
+  name: 'users',
+  version: '1.0.0',
+  controllers: () => new UsersController()
+});
+```
+
+Available decorators include `@Controller`, HTTP method decorators, `@Body`, `@Param`, `@Status`, `@OnError`, and `@Version`. Endpoint versions inherit the module version unless overridden.
+
+## Low-level module shape
 
 ```js
 // user.module.js
@@ -120,9 +149,27 @@ new Kernel(context, {
 ```
 
 The dashboard only binds when `enabled: true`. `port: 0` lets the OS pick a free port.
-On first start Hivelet generates a strong password and writes it once through the kernel
-logger. Only a random-salt SHA-512 verifier is persisted in `authFile`; removing that file
-rotates the password on the next start.
+On first start Hivelet generates a strong password and prints it once through the kernel
+logger as `Dashboard password (shown once): ...`. Only a random-salt SHA-512 verifier is
+persisted in `authFile`; removing that file before startup rotates the password.
+
+## Autonomous mode
+
+```ts
+new Kernel(context, {
+  autonomous: {
+    enabled: true,
+    paths: ['./dist/modules'],
+    loadOnStart: true,
+    unloadOnDelete: true,
+    retries: 2,
+    retryDelay: 500,
+    autoRollback: false
+  }
+});
+```
+
+Paths may point to module files or directories. Directories are discovered recursively and watched for changes. `autoRollback` is disabled by default because enabling it allows Hivelet to restore the last known good module source on disk after all reload retries fail.
 
 ## Monitoring
 

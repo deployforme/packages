@@ -1,29 +1,33 @@
 # @hivelet/adapter-nest
 
-NestJS adapter for Hivelet. Connects the kernel to a Nest application and reuses the Express adapter for route registration.
+NestJS integration for Hivelet runtime modules. The adapter owns application bootstrap, connects Nest dependency injection to runtime modules, and sends NestJS and Hivelet logs through one logger.
 
-> **Platform support:** `@nestjs/platform-express` only. NestJS applications created with `FastifyAdapter` are not supported and will throw a `TypeError` at construction time.
-
-## Features
-
-- Plug-and-play `NestExpressAdapter` for `INestApplication`
-- `HiveletNestFactory` for one-step application and kernel bootstrap
-- One structured logger stream for NestJS and Hivelet
-- Compatible with NestJS guards, interceptors, exception filters, pipes, and middleware
-- Atomic route swap on reload
-- Type-safe `Request`/`Response` end-to-end
+> `@nestjs/platform-express` is required. Fastify-based Nest applications are not supported.
 
 ## Install
 
 ```bash
 pnpm add @hivelet/core @hivelet/adapter-nest \
-        @nestjs/common @nestjs/core @nestjs/platform-express \
-        express
+  @nestjs/common @nestjs/core @nestjs/platform-express express
 ```
 
-`@nestjs/platform-fastify` is **not** a supported peer.
-
 ## Quick start
+
+Import `HiveletModule` in the root Nest module:
+
+```ts
+import { Module } from '@nestjs/common';
+import { HiveletModule } from '@hivelet/adapter-nest';
+import { UserStore } from './user.store';
+
+@Module({
+  imports: [HiveletModule],
+  providers: [UserStore]
+})
+export class AppModule {}
+```
+
+Start Nest and Hivelet together:
 
 ```ts
 import 'reflect-metadata';
@@ -35,24 +39,21 @@ import { UserStore } from './user.store';
 void HiveletNestFactory.start(AppModule, {
   port: 3000,
   modules: path.join(__dirname, 'modules'),
-  inject: { userStore: UserStore }
+  inject: { userStore: UserStore },
+  kernel: {
+    dashboard: { enabled: true, port: 3001 },
+    autonomous: { autoRollback: true }
+  }
 });
 ```
 
-Import `HiveletModule` once in the root Nest module. `HiveletRuntime` then exposes the
-kernel to Nest controllers when admin endpoints need it.
+`modules` accepts a file, a directory, or an array of paths. Directories are watched recursively. Modules discovered at startup are loaded automatically.
+
+## Runtime module
 
 ```ts
-@Module({ imports: [HiveletModule], providers: [UserStore] })
-export class AppModule {}
-```
-
-`NestAdapter` remains an alias of the low-level `NestExpressAdapter`.
-
-## Module example
-
-```ts
-import { Body, Controller, Get, Post, defineModule } from '@hivelet/core';
+import { Body, Controller, Get, Post, Status, defineModule } from '@hivelet/core';
+import { UserStore } from '../user.store';
 
 @Controller('/users')
 class UsersController {
@@ -64,75 +65,73 @@ class UsersController {
   }
 
   @Post()
-  create(@Body() input: CreateUserInput) {
+  @Status(201)
+  create(@Body() input: { name: string }) {
     return this.store.create(input);
   }
 }
 
 export default defineModule({
-  name: 'user',
+  name: 'users',
   version: '1.0.0',
-  controllers: context => new UsersController(context.container!.get('userStore'))
+  controllers: context =>
+    new UsersController(context.container!.get<UserStore>('userStore'))
 });
 ```
 
-## Hot reload
+The `inject` map connects a Hivelet dependency name to a Nest provider token. Runtime modules can resolve mapped providers through `context.container`; they cannot mutate the Nest container.
+
+## Access the kernel from Nest
+
+Inject `HiveletRuntime` into a regular Nest controller or service:
 
 ```ts
-await kernel.load('./modules/user.module.js');
-// edit user.module.js ...
-await kernel.reload('./modules/user.module.js');
-```
+import { Controller, Get } from '@nestjs/common';
+import { HiveletRuntime } from '@hivelet/adapter-nest';
 
-Old routes are unregistered, new ones are registered, and pending requests are not interrupted.
-
-## Admin controller
-
-```ts
-import { Controller, Get, Post, Param } from '@nestjs/common';
-import type { Kernel } from '@hivelet/core';
-import type { Request, Response } from 'express';
-import { HiveletRegistry } from './hivelet.registry';
-
-type HiveletKernel = Kernel<Request, Response>;
-
-@Controller('admin/modules')
+@Controller('admin')
 export class AdminController {
-  constructor(private readonly registry: HiveletRegistry) {}
+  constructor(private readonly hivelet: HiveletRuntime) {}
 
-  private kernel(): HiveletKernel {
-    return this.registry.get();
-  }
-
-  @Get()
-  list() {
-    return this.kernel().list().map(m => ({
-      name: m.module.name,
-      version: m.module.version,
-      routes: m.registeredRoutes.length
+  @Get('modules')
+  modules() {
+    return this.hivelet.kernel.list().map(entry => ({
+      name: entry.module.name,
+      version: entry.module.version,
+      routes: entry.registeredRoutes.length
     }));
-  }
-
-  @Post(':name/reload')
-  reload(@Param('name') name: string) {
-    return this.kernel().reload(`./modules/${name}.module.js`);
   }
 }
 ```
 
-Don't set the kernel directly on `INestApplication` (`app.hiveletKernel = ...`) — Nest 10+ wraps the app in a Proxy that rejects unknown property writes with `'set' on proxy`. Use a registered service instead.
+Do not attach custom fields to `INestApplication`. Nest wraps the application in a proxy that can reject unknown property writes; `HiveletRuntime` is the supported bridge.
 
-## Platform support
+## Reload behavior
+
+Hivelet watches configured module paths in autonomous mode. A handler-only update keeps the existing route proxy mounted and switches its target atomically. Unchanged sibling endpoints are not unregistered, and in-flight requests are not interrupted.
+
+Structural changes are also transactional: additions are registered first, removals happen last, and a failed activation restores the previous working routes. Set `kernel.autonomous.autoRollback` to `true` to restore the last known good source file after all reload retries fail.
+
+## Application lifecycle
+
+Use `HiveletNestFactory.start()` for the standard one-step startup. Use `create()` when the Nest application needs configuration before listening:
 
 ```ts
-// supported
-const app = await NestFactory.create(AppModule);
+const application = await HiveletNestFactory.create(AppModule, options);
 
-// not supported — throws at adapter construction
-const app = await NestFactory.create(AppModule, new FastifyAdapter());
+application.nest.enableShutdownHooks();
+await application.listen(3000);
 ```
 
-The adapter inspects `app.getHttpAdapter().getType()` and throws `TypeError('NestExpressAdapter requires @nestjs/platform-express')` if the platform is not Express.
+`application.close()` stops the Hivelet kernel and then closes Nest.
+
+## Logging
+
+The factory installs `HiveletNestLogger`, so Nest startup, application, kernel, reload, rollback, and dashboard messages use the same Hivelet logger stream. Supply `options.logger` to use a custom Hivelet logger.
+
+## Low-level adapter
+
+`NestExpressAdapter` can connect an existing `INestApplication` to a manually created kernel. `NestAdapter` remains an alias for compatibility. Both require the Express platform adapter.
 
 ## License
 

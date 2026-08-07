@@ -1,13 +1,6 @@
 # @hivelet/adapter-express
 
-Express adapter for Hivelet. Maps `context.http.registerRoute` to a live Express `Router` so modules can be loaded, reloaded, and unloaded at runtime.
-
-## Features
-
-- Dynamic Express route registration and unregistration
-- Per-adapter router swap for atomic reloads
-- Body parsing stays with your Express middleware (`app.use(express.json())`, etc.)
-- Typed `Request`/`Response` end-to-end
+Express integration for Hivelet runtime modules. It mounts one dynamic router in the host application and updates runtime routes transactionally.
 
 ## Install
 
@@ -25,103 +18,80 @@ import { ExpressAdapter } from '@hivelet/adapter-express';
 const app = express();
 app.use(express.json());
 
-const kernel = new Kernel(createRuntimeContext(new ExpressAdapter(app)));
+const kernel = new Kernel(createRuntimeContext(new ExpressAdapter(app)), {
+  autonomous: {
+    enabled: true,
+    paths: ['./dist/modules']
+  }
+});
 
-await kernel.load('./modules/user.module.js');
-await kernel.load('./modules/product.module.js');
-
+await kernel.start();
 app.listen(3000);
 ```
 
-## Module example
+## Runtime module
 
-```js
-// user.module.js
-module.exports = {
-  name: 'user',
+```ts
+import { Body, Controller, Get, Param, Post, Status, defineModule } from '@hivelet/core';
+
+@Controller('/users')
+class UsersController {
+  @Get()
+  list() {
+    return [{ id: '1', name: 'Ada' }];
+  }
+
+  @Get('/:id')
+  find(@Param('id') id: string) {
+    return { id, name: `User ${id}` };
+  }
+
+  @Post()
+  @Status(201)
+  create(@Body() input: { name: string }) {
+    return { id: crypto.randomUUID(), ...input };
+  }
+}
+
+export default defineModule({
+  name: 'users',
   version: '1.0.0',
-  register(context) {
-    context.http.registerRoute({
-      id: 'user-list',
-      method: 'GET',
-      path: '/users',
-      handler: async () => ({ users: ['Alice', 'Bob', 'Charlie'] })
-    });
-
-    context.http.registerRoute({
-      id: 'user-create',
-      method: 'POST',
-      path: '/users',
-      handler: async (req) => ({
-        id: Date.now(),
-        name: req.body?.name
-      })
-    });
-
-    context.http.registerRoute({
-      id: 'user-get',
-      method: 'GET',
-      path: '/users/:id',
-      handler: async (req) => ({ id: req.params.id, name: 'User ' + req.params.id })
-    });
-  },
-  dispose() {}
-};
+  controllers: () => new UsersController()
+});
 ```
 
-A handler's return value is sent as JSON. Throw to delegate to Express error middleware.
+The adapter extracts decorated parameters from Express requests and serializes returned values as JSON. `@Status()` controls a successful response status; empty successful responses such as `204` are sent without a body. `HttpError` values are returned as `{ "error": "message" }` with their declared status.
 
-## Hot reload
+## Reload guarantees
 
-```ts
-await kernel.load('./modules/user.module.js');
-// edit user.module.js ...
-await kernel.reload('./modules/user.module.js');
-```
+Routes with the same `id`, method, path, and success status keep their mounted proxy during reload. Hivelet switches the handler target only after the new module activates successfully, so unrelated endpoints and in-flight requests continue normally.
 
-The adapter rebuilds its internal router and swaps it in atomically — pending requests finish on the old router, new requests hit the new one.
-
-## API
-
-### `ExpressAdapter`
-
-```ts
-new ExpressAdapter(app: express.Application);
-
-interface HttpAdapter {
-  registerRoute(definition: RouteDefinition): void;
-  unregisterRoute(id: string): void;
-}
-```
-
-### `RouteDefinition`
-
-```ts
-interface RouteDefinition {
-  readonly id: string;          // unique per module
-  readonly method: HttpMethod;  // GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS
-  readonly path: string;        // absolute, must start with /
-  readonly handler: (req, res) => unknown | Promise<unknown>;
-}
-```
+When a structural route change requires rebuilding the Express router, replacement is transactional. If the rebuild fails, the adapter restores the previous working definition.
 
 ## Middleware
 
-Standard Express middleware is applied to the host app before the adapter:
+Register host middleware before creating the adapter:
 
 ```ts
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors());
 
-// modules run after the middleware chain
+const adapter = new ExpressAdapter(app);
 ```
 
-Error middleware works the same way:
+Runtime routes pass through the same Express middleware chain.
+
+## Low-level routes
+
+Decorator modules compile to the framework-agnostic `RouteDefinition` contract. Modules may also register that contract directly when transport-level access is required:
 
 ```ts
-app.use((err, req, res, next) => {
-  res.status(500).json({ error: 'Internal Server Error' });
+context.http.registerRoute({
+  id: 'users-raw',
+  method: 'GET',
+  path: '/users/raw',
+  handler: async request => ({ query: request.query })
 });
 ```
 
