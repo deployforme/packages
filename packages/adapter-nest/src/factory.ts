@@ -103,5 +103,5 @@ export class HiveletNestFactory {
 }
 
 function runtimeExtensions(): string[] {
-  return require.extensions['.ts'] ? ['.ts', '.js', '.cjs', '.mjs'] : ['.js', '.cjs', '.mjs'];
+  return require.extensions['.ts'] ? ['.ts', '.js', '.cjs'] : ['.js', '.cjs'];
 }

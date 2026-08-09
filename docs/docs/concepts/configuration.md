@@ -27,7 +27,8 @@ interface DashboardConfig {
 interface AutonomousConfig {
   enabled?: boolean;        // default: false
   paths?: string[];         // required when enabled
-  extensions?: string[];    // default: ['.js', '.cjs', '.mjs']
+  extensions?: string[];    // default: ['.js', '.cjs']
+  entrySuffix?: string;     // default: '.module'
   ignore?: string[];        // default: [] (node_modules, .git, .hivelet always ignored)
   debounce?: number;        // default: 150 (ms)
   loadOnStart?: boolean;    // default: true
@@ -58,7 +59,8 @@ const DEFAULT_CONFIG = {
   autonomous: {
     enabled: false,
     paths: [],
-    extensions: ['.js', '.cjs', '.mjs'],
+    extensions: ['.js', '.cjs'],
+    entrySuffix: '.module',
     ignore: [],
     debounce: 150,
     loadOnStart: true,

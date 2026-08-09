@@ -31,7 +31,8 @@ export interface EndpointMetric {
   totalDuration: number;
   maxDuration: number;
   durations: number[];
-  requestTimes: number[];
+  /** Bounded one-second buckets for the rolling one-minute request rate. */
+  requestBuckets: Array<{ second: number; count: number }>;
   lastRequestAt?: Date;
 }
 

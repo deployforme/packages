@@ -88,7 +88,7 @@ export class Monitor {
             totalDuration: 0,
             maxDuration: 0,
             durations: [],
-            requestTimes: []
+            requestBuckets: []
           });
     }
     this.state.activeModules.set(name, {
@@ -130,9 +130,9 @@ export class Monitor {
     endpoint.maxDuration = Math.max(endpoint.maxDuration, duration);
     endpoint.lastRequestAt = new Date(now);
     endpoint.durations.push(duration);
-    endpoint.requestTimes.push(now);
+    this.recordRequest(endpoint, now);
     if (endpoint.durations.length > 200) endpoint.durations.shift();
-    this.trimRequestTimes(endpoint, now);
+    this.trimRequestBuckets(endpoint, now);
   }
 
   snapshot(): MonitoringSnapshot {
@@ -168,7 +168,7 @@ export class Monitor {
     const builds = this.state.builds;
     const endpoints = Array.from(this.state.endpoints.values());
     const now = Date.now();
-    endpoints.forEach(endpoint => this.trimRequestTimes(endpoint, now));
+    endpoints.forEach(endpoint => this.trimRequestBuckets(endpoint, now));
     const totalRequests = endpoints.reduce((total, endpoint) => total + endpoint.requests, 0);
     const totalErrors = endpoints.reduce((total, endpoint) => total + endpoint.errors, 0);
     const totalDuration = endpoints.reduce((total, endpoint) => total + endpoint.totalDuration, 0);
@@ -180,14 +180,14 @@ export class Monitor {
       activeModules: this.state.activeModules.size,
       uptime: now - this.state.startTime.getTime(),
       totalRequests,
-      requestsPerMinute: endpoints.reduce((total, endpoint) => total + endpoint.requestTimes.length, 0),
+      requestsPerMinute: endpoints.reduce((total, endpoint) => total + this.requestsPerMinute(endpoint), 0),
       averageResponseTime: totalRequests === 0 ? 0 : totalDuration / totalRequests,
       errorRate: totalRequests === 0 ? 0 : totalErrors / totalRequests
     };
   }
 
   private snapshotEndpoint(endpoint: EndpointMetric): EndpointSnapshot {
-    this.trimRequestTimes(endpoint, Date.now());
+    this.trimRequestBuckets(endpoint, Date.now());
     const durations = [...endpoint.durations].sort((left, right) => left - right);
     const p95Index = Math.max(0, Math.ceil(durations.length * 0.95) - 1);
     return {
@@ -197,7 +197,7 @@ export class Monitor {
       path: endpoint.path,
       version: endpoint.version,
       requests: endpoint.requests,
-      requestsPerMinute: endpoint.requestTimes.length,
+      requestsPerMinute: this.requestsPerMinute(endpoint),
       errors: endpoint.errors,
       errorRate: endpoint.requests === 0 ? 0 : endpoint.errors / endpoint.requests,
       activeRequests: endpoint.activeRequests,
@@ -208,11 +208,25 @@ export class Monitor {
     };
   }
 
-  private trimRequestTimes(endpoint: EndpointMetric, now: number): void {
-    const cutoff = now - 60_000;
-    while (endpoint.requestTimes[0] !== undefined && endpoint.requestTimes[0] < cutoff) {
-      endpoint.requestTimes.shift();
+  private recordRequest(endpoint: EndpointMetric, now: number): void {
+    const second = Math.floor(now / 1000);
+    const latest = endpoint.requestBuckets.at(-1);
+    if (latest?.second === second) {
+      latest.count += 1;
+    } else {
+      endpoint.requestBuckets.push({ second, count: 1 });
     }
+  }
+
+  private trimRequestBuckets(endpoint: EndpointMetric, now: number): void {
+    const cutoff = Math.floor((now - 60_000) / 1000);
+    while (endpoint.requestBuckets[0]?.second !== undefined && endpoint.requestBuckets[0].second <= cutoff) {
+      endpoint.requestBuckets.shift();
+    }
+  }
+
+  private requestsPerMinute(endpoint: EndpointMetric): number {
+    return endpoint.requestBuckets.reduce((total, bucket) => total + bucket.count, 0);
   }
 
   private endpointKey(moduleName: string, routeId: string): string {

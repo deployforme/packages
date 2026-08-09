@@ -3,6 +3,7 @@ name: Hivelet CI
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -18,14 +19,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        run: corepack enable
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
-
-      - name: Setup pnpm
-        run: corepack enable
 
       - name: Use workspace pnpm version
         run: pnpm --version | grep -E "^10\." || (echo "Wrong pnpm version" && exit 1)
@@ -47,7 +48,7 @@ jobs:
 
   release:
     name: Publish packages
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
     needs: validate
     runs-on: ubuntu-latest
     permissions:
@@ -58,15 +59,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup pnpm
+        run: corepack enable
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
           registry-url: https://registry.npmjs.org
-
-      - name: Setup pnpm
-        run: corepack enable
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -84,6 +85,10 @@ jobs:
 
       - name: Pack nest adapter
         working-directory: packages/adapter-nest
+        run: pnpm pack --pack-destination ../dist
+
+      - name: Pack Hono adapter
+        working-directory: packages/adapter-hono
         run: pnpm pack --pack-destination ../dist
 
       - name: Upload archives
@@ -110,8 +115,8 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Create release tag
-        run: |
-          VERSION=$(node -p "require('./packages/core/package.json').version")
-          git tag "v${VERSION}" || true
-          git push origin "v${VERSION}" || true
+      - name: Publish @hivelet/adapter-hono
+        working-directory: packages/adapter-hono
+        run: pnpm publish --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

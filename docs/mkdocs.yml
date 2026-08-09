@@ -96,6 +96,7 @@ nav:
       - tr/api/index.md
       - Core: tr/api/core.md
       - Express adapter: tr/api/adapter-express.md
+      - Hono adapter: tr/api/adapter-hono.md
       - Nest adapter: tr/api/adapter-nest.md
   - Guides:
       - tr/guides/index.md

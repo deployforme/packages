@@ -22,6 +22,25 @@ export interface HttpAdapter<Request = unknown, Response = unknown> {
   unregisterRoute(id: string): void;
 }
 
+export type RouteBatchOperation<Request = unknown, Response = unknown> =
+  | { readonly kind: 'register'; readonly definition: RouteDefinition<Request, Response> }
+  | { readonly kind: 'unregister'; readonly id: string };
+
+/**
+ * Optional adapter capability for applying structural route changes in one commit.
+ * Implementations must leave their previous route set untouched when this method throws.
+ */
+export interface TransactionalHttpAdapter<Request = unknown, Response = unknown>
+  extends HttpAdapter<Request, Response> {
+  applyRouteBatch(operations: readonly RouteBatchOperation<Request, Response>[]): void;
+}
+
+export function supportsRouteBatch<Request, Response>(
+  adapter: HttpAdapter<Request, Response>
+): adapter is TransactionalHttpAdapter<Request, Response> {
+  return typeof (adapter as Partial<TransactionalHttpAdapter<Request, Response>>).applyRouteBatch === 'function';
+}
+
 export interface LogContextFields {
   readonly [key: string]: unknown;
 }

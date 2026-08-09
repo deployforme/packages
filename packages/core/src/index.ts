@@ -1,11 +1,18 @@
 export { resolveKernelConfig } from './config';
 export type {
   AutonomousConfig,
+  CapacityConfig,
   DashboardConfig,
   KernelConfig,
+  LifecycleConfig,
+  MonitoringConfig,
+  MonitoringExporter,
   ResolvedAutonomousConfig,
+  ResolvedCapacityConfig,
   ResolvedDashboardConfig,
   ResolvedKernelConfig,
+  ResolvedLifecycleConfig,
+  ResolvedMonitoringConfig,
   ResolvedVersioningConfig,
   VersioningConfig
 } from './config';

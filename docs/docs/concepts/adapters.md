@@ -15,6 +15,10 @@ interface HttpAdapter<Request = unknown, Response = unknown> {
 
 Two methods. Anything that implements them can be a Hivelet adapter — not just Express.
 
+Adapters can optionally implement `TransactionalHttpAdapter.applyRouteBatch()`. The kernel
+uses this capability to apply all structural changes through one immutable route-set commit,
+while custom adapters implementing only `HttpAdapter` continue to use compensating rollback.
+
 ## Express adapter
 
 ```ts
@@ -48,6 +52,22 @@ Rebuilding the router rather than mutating its stack is what makes the swap atom
 old router keeps serving requests until the new one is fully constructed.
 
 Details: [API → Express adapter](../tr/api/adapter-express.md).
+
+## Hono adapter
+
+```ts
+import { Hono } from 'hono';
+import { HonoAdapter } from '@hivelet/adapter-hono';
+
+const app = new Hono();
+const adapter = new HonoAdapter(app);
+```
+
+Hono has no public route-unregister API. `HonoAdapter` therefore mounts one delegating
+middleware and builds a fresh child dispatcher for every structural batch. A single state
+reference is swapped after the child dispatcher has been assembled, so old requests retain
+their captured dispatcher and new requests see the complete new route set. Create the adapter
+before the host application handles its first request.
 
 ## Nest adapter
 
@@ -98,7 +118,8 @@ class MyAdapter implements HttpAdapter {
 }
 ```
 
-Both methods must be synchronous and should throw rather than half-apply a change — the
+Both methods must be synchronous and should throw rather than half-apply a change. A
+`TransactionalHttpAdapter` must keep its complete previous state if `applyRouteBatch()` throws. The
 kernel relies on that to roll activation back cleanly. Everything else (kernel, autonomy,
 versioning, monitoring, dashboard) stays framework-agnostic.
 

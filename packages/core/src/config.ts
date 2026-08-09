@@ -1,3 +1,5 @@
+import type { MonitoringSnapshot } from './monitoring/types';
+
 export interface DashboardConfig {
   enabled?: boolean;
   host?: string;
@@ -14,8 +16,10 @@ export interface AutonomousConfig {
   enabled?: boolean;
   /** Directories (recursive) or files holding runtime modules. */
   paths?: string[];
-  /** Extensions considered modules. Defaults to `.js`, `.cjs`, `.mjs`. */
+  /** Extensions considered modules. Defaults to `.js` and `.cjs`. */
   extensions?: string[];
+  /** Entry filename suffix before the extension. Defaults to `.module`. */
+  entrySuffix?: string;
   /** Path fragments to skip, in addition to `node_modules`, `.git` and `.hivelet`. */
   ignore?: string[];
   /** Quiet period in milliseconds before a filesystem event triggers a reload. */
@@ -44,11 +48,41 @@ export interface VersioningConfig {
   keep?: number;
 }
 
+export interface LifecycleConfig {
+  /** Maximum time to await old in-flight requests before cleanup continues in the background. */
+  drainTimeout?: number;
+  /** Maximum queued lifecycle operations before new work is rejected. */
+  maxPendingOperations?: number;
+}
+
+export interface CapacityConfig {
+  /** Maximum concurrently active runtime modules. */
+  maxModules?: number;
+  /** Maximum routes accepted from one runtime module. */
+  maxRoutesPerModule?: number;
+  /** Maximum routes across all active runtime modules. */
+  maxTotalRoutes?: number;
+}
+
+export interface MonitoringExporter {
+  export(snapshot: MonitoringSnapshot): void | Promise<void>;
+}
+
+export interface MonitoringConfig {
+  /** Vendor-neutral sink for Prometheus, OpenTelemetry, StatsD, or custom pipelines. */
+  exporter?: MonitoringExporter;
+  /** Export cadence in milliseconds. Defaults to 10 seconds. */
+  exportInterval?: number;
+}
+
 export interface KernelConfig {
   dashboard?: DashboardConfig;
   buildHistoryLimit?: number;
   autonomous?: AutonomousConfig;
   versioning?: VersioningConfig;
+  lifecycle?: LifecycleConfig;
+  capacity?: CapacityConfig;
+  monitoring?: MonitoringConfig;
 }
 
 export interface ResolvedDashboardConfig {
@@ -64,6 +98,7 @@ export interface ResolvedAutonomousConfig {
   readonly enabled: boolean;
   readonly paths: readonly string[];
   readonly extensions: readonly string[];
+  readonly entrySuffix: string;
   readonly ignore: readonly string[];
   readonly debounce: number;
   readonly loadOnStart: boolean;
@@ -79,11 +114,30 @@ export interface ResolvedVersioningConfig {
   readonly keep: number;
 }
 
+export interface ResolvedLifecycleConfig {
+  readonly drainTimeout: number;
+  readonly maxPendingOperations: number;
+}
+
+export interface ResolvedCapacityConfig {
+  readonly maxModules: number;
+  readonly maxRoutesPerModule: number;
+  readonly maxTotalRoutes: number;
+}
+
+export interface ResolvedMonitoringConfig {
+  readonly exporter?: MonitoringExporter;
+  readonly exportInterval: number;
+}
+
 export interface ResolvedKernelConfig {
   readonly dashboard: ResolvedDashboardConfig;
   readonly buildHistoryLimit: number;
   readonly autonomous: ResolvedAutonomousConfig;
   readonly versioning: ResolvedVersioningConfig;
+  readonly lifecycle: ResolvedLifecycleConfig;
+  readonly capacity: ResolvedCapacityConfig;
+  readonly monitoring: ResolvedMonitoringConfig;
 }
 
 const DEFAULT_CONFIG: ResolvedKernelConfig = Object.freeze({
@@ -99,7 +153,8 @@ const DEFAULT_CONFIG: ResolvedKernelConfig = Object.freeze({
   autonomous: Object.freeze({
     enabled: false,
     paths: Object.freeze([]) as readonly string[],
-    extensions: Object.freeze(['.js', '.cjs', '.mjs']) as readonly string[],
+    extensions: Object.freeze(['.js', '.cjs']) as readonly string[],
+    entrySuffix: '.module',
     ignore: Object.freeze([]) as readonly string[],
     debounce: 150,
     loadOnStart: true,
@@ -112,6 +167,18 @@ const DEFAULT_CONFIG: ResolvedKernelConfig = Object.freeze({
     enabled: true,
     directory: '.hivelet/versions',
     keep: 20
+  }),
+  lifecycle: Object.freeze({
+    drainTimeout: 30_000,
+    maxPendingOperations: 1000
+  }),
+  capacity: Object.freeze({
+    maxModules: 1000,
+    maxRoutesPerModule: 5000,
+    maxTotalRoutes: 20_000
+  }),
+  monitoring: Object.freeze({
+    exportInterval: 10_000
   })
 });
 
@@ -158,8 +225,57 @@ export function resolveKernelConfig(config: KernelConfig = {}): ResolvedKernelCo
     }),
     buildHistoryLimit,
     autonomous: resolveAutonomousConfig(config.autonomous as AutonomousConfig | undefined),
-    versioning: resolveVersioningConfig(config.versioning as VersioningConfig | undefined)
+    versioning: resolveVersioningConfig(config.versioning as VersioningConfig | undefined),
+    lifecycle: resolveLifecycleConfig(config.lifecycle as LifecycleConfig | undefined),
+    capacity: resolveCapacityConfig(config.capacity as CapacityConfig | undefined),
+    monitoring: resolveMonitoringConfig(config.monitoring as MonitoringConfig | undefined)
   });
+}
+
+function resolveMonitoringConfig(config: MonitoringConfig | undefined): ResolvedMonitoringConfig {
+  if (config !== undefined && !isRecord(config)) {
+    throw new TypeError('monitoring must be an object');
+  }
+  const source: MonitoringConfig = config ?? {};
+  const exportInterval = source.exportInterval ?? DEFAULT_CONFIG.monitoring.exportInterval;
+  if (source.exporter !== undefined && typeof source.exporter.export !== 'function') {
+    throw new TypeError('monitoring.exporter must implement export(snapshot)');
+  }
+  assertIntegerInRange(exportInterval, 1000, 60_000, 'monitoring.exportInterval');
+  return Object.freeze({
+    exportInterval,
+    ...(source.exporter ? { exporter: source.exporter } : {})
+  });
+}
+
+function resolveCapacityConfig(config: CapacityConfig | undefined): ResolvedCapacityConfig {
+  if (config !== undefined && !isRecord(config)) {
+    throw new TypeError('capacity must be an object');
+  }
+  const source: CapacityConfig = config ?? {};
+  const maxModules = source.maxModules ?? DEFAULT_CONFIG.capacity.maxModules;
+  const maxRoutesPerModule = source.maxRoutesPerModule ?? DEFAULT_CONFIG.capacity.maxRoutesPerModule;
+  const maxTotalRoutes = source.maxTotalRoutes ?? DEFAULT_CONFIG.capacity.maxTotalRoutes;
+  assertIntegerInRange(maxModules, 1, 100_000, 'capacity.maxModules');
+  assertIntegerInRange(maxRoutesPerModule, 1, 100_000, 'capacity.maxRoutesPerModule');
+  assertIntegerInRange(maxTotalRoutes, 1, 1_000_000, 'capacity.maxTotalRoutes');
+  if (maxRoutesPerModule > maxTotalRoutes) {
+    throw new RangeError('capacity.maxRoutesPerModule cannot exceed capacity.maxTotalRoutes');
+  }
+  return Object.freeze({ maxModules, maxRoutesPerModule, maxTotalRoutes });
+}
+
+function resolveLifecycleConfig(config: LifecycleConfig | undefined): ResolvedLifecycleConfig {
+  if (config !== undefined && !isRecord(config)) {
+    throw new TypeError('lifecycle must be an object');
+  }
+
+  const source: LifecycleConfig = config ?? {};
+  const drainTimeout = source.drainTimeout ?? DEFAULT_CONFIG.lifecycle.drainTimeout;
+  const maxPendingOperations = source.maxPendingOperations ?? DEFAULT_CONFIG.lifecycle.maxPendingOperations;
+  assertIntegerInRange(drainTimeout, 0, 3_600_000, 'lifecycle.drainTimeout');
+  assertIntegerInRange(maxPendingOperations, 1, 100_000, 'lifecycle.maxPendingOperations');
+  return Object.freeze({ drainTimeout, maxPendingOperations });
 }
 
 function resolveAutonomousConfig(config: AutonomousConfig | undefined): ResolvedAutonomousConfig {
@@ -173,6 +289,7 @@ function resolveAutonomousConfig(config: AutonomousConfig | undefined): Resolved
   const enabled = source.enabled ?? defaults.enabled;
   const paths = source.paths ?? [...defaults.paths];
   const extensions = source.extensions ?? [...defaults.extensions];
+  const entrySuffix = source.entrySuffix ?? defaults.entrySuffix;
   const ignore = source.ignore ?? [...defaults.ignore];
   const debounce = source.debounce ?? defaults.debounce;
   const loadOnStart = source.loadOnStart ?? defaults.loadOnStart;
@@ -187,6 +304,9 @@ function resolveAutonomousConfig(config: AutonomousConfig | undefined): Resolved
   assertBoolean(autoRollback, 'autonomous.autoRollback');
   assertStringArray(paths, 'autonomous.paths');
   assertStringArray(extensions, 'autonomous.extensions');
+  if (typeof entrySuffix !== 'string') {
+    throw new TypeError('autonomous.entrySuffix must be a string');
+  }
   assertStringArray(ignore, 'autonomous.ignore');
   assertIntegerInRange(debounce, 0, 60000, 'autonomous.debounce');
   assertIntegerInRange(retries, 0, 10, 'autonomous.retries');
@@ -200,6 +320,7 @@ function resolveAutonomousConfig(config: AutonomousConfig | undefined): Resolved
     enabled,
     paths: Object.freeze([...paths]),
     extensions: Object.freeze(extensions.map(value => (value.startsWith('.') ? value : `.${value}`))),
+    entrySuffix,
     ignore: Object.freeze([...ignore]),
     debounce,
     loadOnStart,

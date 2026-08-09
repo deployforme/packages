@@ -16,13 +16,14 @@ Performance suite for the Hivelet kernel and `@hivelet/adapter-express`.
 
 ## Targets
 
-- Load P99 < 10ms
+- Load P95 < 10ms for modules up to 200 routes
+- Load average < 15ms for 500 routes and < 25ms for 1000 routes
 - Reload P99 < 20ms
 - Success rate > 99.9%
 - Memory growth < 5KB per reload
 - Throughput > 100 loads/sec
 
-If a number drifts outside these bands, treat it as a regression and investigate before merging.
+Load benchmarks disable version persistence and application logging so they isolate kernel and adapter route-commit cost. If a number drifts outside these bands, treat it as a regression and investigate before merging.
 
 ## Custom benchmark
 

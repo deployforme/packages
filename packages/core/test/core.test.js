@@ -58,6 +58,8 @@ function request(url, options = {}, body) {
 
 afterEach(async () => {
   delete globalThis.__hiveletCoreEvents;
+  delete globalThis.__hiveletReleaseRequest;
+  delete globalThis.__hiveletRequestGate;
   await Promise.all(Array.from(temporaryDirectories, async directory => {
     await rm(directory, { recursive: true, force: true });
     temporaryDirectories.delete(directory);
@@ -80,7 +82,8 @@ test('resolveKernelConfig applies immutable defaults', () => {
     autonomous: {
       enabled: false,
       paths: [],
-      extensions: ['.js', '.cjs', '.mjs'],
+      extensions: ['.js', '.cjs'],
+      entrySuffix: '.module',
       ignore: [],
       debounce: 150,
       loadOnStart: true,
@@ -93,12 +96,27 @@ test('resolveKernelConfig applies immutable defaults', () => {
       enabled: true,
       directory: '.hivelet/versions',
       keep: 20
+    },
+    lifecycle: {
+      drainTimeout: 30000,
+      maxPendingOperations: 1000
+    },
+    capacity: {
+      maxModules: 1000,
+      maxRoutesPerModule: 5000,
+      maxTotalRoutes: 20000
+    },
+    monitoring: {
+      exportInterval: 10000
     }
   });
   assert.equal(Object.isFrozen(config), true);
   assert.equal(Object.isFrozen(config.autonomous), true);
   assert.equal(Object.isFrozen(config.versioning), true);
   assert.equal(Object.isFrozen(config.dashboard), true);
+  assert.equal(Object.isFrozen(config.lifecycle), true);
+  assert.equal(Object.isFrozen(config.capacity), true);
+  assert.equal(Object.isFrozen(config.monitoring), true);
 });
 
 test('resolveKernelConfig rejects invalid port, host, and history values', () => {
@@ -155,6 +173,17 @@ test('Monitor snapshots builds, modules, and build completion', () => {
   assert.equal(snapshot.endpoints[0].averageResponseTime, 20);
   assert.equal(snapshot.endpoints[0].p95ResponseTime, 28);
   assert.doesNotThrow(() => new Date(snapshot.generatedAt).toISOString());
+});
+
+test('Kernel exports vendor-neutral monitoring snapshots', async () => {
+  const snapshots = [];
+  const kernel = new Kernel({ http: createAdapter() }, {
+    monitoring: { exporter: { export: snapshot => { snapshots.push(snapshot); } } },
+    versioning: { enabled: false }
+  });
+  await kernel.flushMonitoring();
+  assert.equal(snapshots.length, 1);
+  assert.equal(snapshots[0].stats.activeModules, 0);
 });
 
 test('Dashboard serves lifecycle endpoints, errors, security headers, and Hivelet HTML', async t => {
@@ -267,6 +296,7 @@ module.exports = {
 });
 
 test('Kernel does not apply staged routes when register fails', async () => {
+  globalThis.__hiveletCoreEvents = [];
   const adapter = createAdapter();
   const modulePath = await createTemporaryModule(`
 module.exports = {
@@ -275,7 +305,8 @@ module.exports = {
   register(context) {
     context.http.registerRoute({ id: 'never-applied', method: 'GET', path: '/broken', handler() {} });
     throw new Error('register failed');
-  }
+  },
+  dispose() { globalThis.__hiveletCoreEvents.push('candidate-disposed'); }
 };
 `);
   const kernel = new Kernel({ http: adapter });
@@ -285,6 +316,99 @@ module.exports = {
   assert.equal(adapter.routes.size, 0);
   assert.equal(kernel.list().length, 0);
   assert.equal(kernel.status().builds[0].status, 'error');
+  assert.deepEqual(globalThis.__hiveletCoreEvents, ['candidate-disposed']);
+});
+
+test('Kernel applies structural routes as one transactional batch', async () => {
+  const routes = new Map();
+  const batches = [];
+  const adapter = {
+    registerRoute() { throw new Error('legacy register should not be called'); },
+    unregisterRoute() { throw new Error('legacy unregister should not be called'); },
+    applyRouteBatch(operations) {
+      batches.push(operations.map(operation => operation.kind));
+      for (const operation of operations) {
+        if (operation.kind === 'register') routes.set(operation.definition.id, operation.definition);
+        else routes.delete(operation.id);
+      }
+    }
+  };
+  const modulePath = await createTemporaryModule(`
+module.exports = {
+  name: 'batch-module', version: '1.0.0',
+  register(context) {
+    context.http.registerRoute({ id: 'one', method: 'GET', path: '/one', handler() {} });
+    context.http.registerRoute({ id: 'two', method: 'GET', path: '/two', handler() {} });
+  }
+};`);
+  const kernel = new Kernel({ http: adapter }, { versioning: { enabled: false } });
+
+  await kernel.load(modulePath);
+  assert.deepEqual(batches, [['register', 'register']]);
+  assert.deepEqual([...routes.keys()], ['one', 'two']);
+  await kernel.stop();
+});
+
+test('Kernel rolls routes back when revision commit fails', async () => {
+  const fs = require('node:fs');
+  const originalRename = fs.renameSync;
+  const adapter = createAdapter();
+  const directory = await createTemporaryDirectory();
+  const modulePath = path.join(directory, 'module.cjs');
+  await writeFile(modulePath, `
+module.exports = {
+  name: 'atomic-module', version: '1.0.0',
+  register(context) { context.http.registerRoute({ id: 'atomic', method: 'GET', path: '/atomic', handler() {} }); },
+  dispose() { globalThis.__hiveletCoreEvents.push('candidate-disposed'); }
+};`);
+  globalThis.__hiveletCoreEvents = [];
+  const kernel = new Kernel({ http: adapter }, { versioning: { directory: path.join(directory, 'versions') } });
+  fs.renameSync = () => { throw new Error('simulated disk failure'); };
+  try {
+    await assert.rejects(kernel.load(modulePath), /simulated disk failure/);
+  } finally {
+    fs.renameSync = originalRename;
+  }
+
+  assert.equal(adapter.routes.size, 0);
+  assert.equal(kernel.list().length, 0);
+  assert.deepEqual(globalThis.__hiveletCoreEvents, ['candidate-disposed']);
+});
+
+test('Kernel drains old requests before disposing a replaced module', async () => {
+  const adapter = createAdapter();
+  globalThis.__hiveletCoreEvents = [];
+  globalThis.__hiveletRequestGate = new Promise(resolve => { globalThis.__hiveletReleaseRequest = resolve; });
+  const modulePath = await createTemporaryModule(`
+module.exports = {
+  name: 'draining', version: '1.0.0',
+  register(context) { context.http.registerRoute({ id: 'slow', method: 'GET', path: '/slow', handler: async () => { await globalThis.__hiveletRequestGate; return 'v1'; } }); },
+  dispose() { globalThis.__hiveletCoreEvents.push('v1-disposed'); }
+};`);
+  const kernel = new Kernel({ http: adapter }, {
+    versioning: { enabled: false },
+    lifecycle: { drainTimeout: 1000 }
+  });
+  await kernel.load(modulePath);
+  const firstRequest = adapter.routes.get('slow').handler({}, {});
+  await writeFile(modulePath, `
+module.exports = {
+  name: 'draining', version: '2.0.0',
+  register(context) { context.http.registerRoute({ id: 'slow', method: 'GET', path: '/slow', handler: () => 'v2' }); }
+};`);
+  const reload = kernel.reload(modulePath);
+  for (let attempt = 0; attempt < 100 && kernel.get('draining').module.version !== '2.0.0'; attempt += 1) {
+    await new Promise(resolve => setTimeout(resolve, 2));
+  }
+
+  assert.equal(kernel.get('draining').module.version, '2.0.0');
+  assert.equal(await adapter.routes.get('slow').handler({}, {}), 'v2');
+  assert.deepEqual(globalThis.__hiveletCoreEvents, []);
+  globalThis.__hiveletReleaseRequest();
+  assert.equal(await firstRequest, 'v1');
+  await reload;
+  assert.deepEqual(globalThis.__hiveletCoreEvents, ['v1-disposed']);
+  await kernel.stop();
 });
 
 test('Kernel replaces a module with the same name and swaps its routes', async () => {

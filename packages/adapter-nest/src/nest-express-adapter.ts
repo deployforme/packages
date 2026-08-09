@@ -1,9 +1,9 @@
-import type { HttpAdapter, RouteDefinition } from '@hivelet/core';
+import type { RouteBatchOperation, RouteDefinition, TransactionalHttpAdapter } from '@hivelet/core';
 import { ExpressAdapter } from '@hivelet/adapter-express';
 import type { INestApplication } from '@nestjs/common';
 import type { Request, Response } from 'express';
 
-export class NestExpressAdapter implements HttpAdapter<Request, Response> {
+export class NestExpressAdapter implements TransactionalHttpAdapter<Request, Response> {
   private readonly adapter: ExpressAdapter;
 
   constructor(app: INestApplication) {
@@ -20,5 +20,9 @@ export class NestExpressAdapter implements HttpAdapter<Request, Response> {
 
   unregisterRoute(id: string): void {
     this.adapter.unregisterRoute(id);
+  }
+
+  applyRouteBatch(operations: readonly RouteBatchOperation<Request, Response>[]): void {
+    this.adapter.applyRouteBatch(operations);
   }
 }

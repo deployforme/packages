@@ -214,3 +214,25 @@ test('ExpressAdapter restores the active route when a replacement cannot be buil
   assert.equal(response.status, 200);
   assert.equal(response.body, JSON.stringify({ version: 1 }));
 });
+
+test('ExpressAdapter applies mixed batches atomically', async () => {
+  const { adapter, server, request } = await createServer();
+  track(server);
+  adapter.applyRouteBatch([
+    { kind: 'register', definition: { id: 'one', method: 'GET', path: '/one', handler: () => ({ value: 1 }) } },
+    { kind: 'register', definition: { id: 'two', method: 'GET', path: '/two', handler: () => ({ value: 2 }) } }
+  ]);
+  adapter.applyRouteBatch([
+    { kind: 'register', definition: { id: 'one', method: 'GET', path: '/one', handler: () => ({ value: 3 }) } },
+    { kind: 'unregister', id: 'two' }
+  ]);
+
+  assert.equal((await request('/one')).body, JSON.stringify({ value: 3 }));
+  assert.equal((await request('/two')).status, 404);
+
+  assert.throws(() => adapter.applyRouteBatch([
+    { kind: 'unregister', id: 'one' },
+    { kind: 'register', definition: { id: 'broken', method: 'INVALID', path: '/broken', handler() {} } }
+  ]), TypeError);
+  assert.equal((await request('/one')).body, JSON.stringify({ value: 3 }));
+});

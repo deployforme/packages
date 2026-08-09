@@ -129,6 +129,34 @@ test('editing a module file reloads it without a manual reload', async () => {
   }
 });
 
+test('editing a local dependency reloads its owning module', async () => {
+  const workspace = await createWorkspace();
+  await mkdir(workspace.modules, { recursive: true });
+  const helperPath = path.join(workspace.modules, 'users-helper.js');
+  const modulePath = path.join(workspace.modules, 'users.module.js');
+  await writeFile(helperPath, `module.exports = { value: 'v1' };`);
+  await writeFile(modulePath, `
+module.exports = {
+  name: 'users', version: '1.0.0',
+  register(context) {
+    const helper = require('./users-helper');
+    context.http.registerRoute({ id: 'users.index', method: 'GET', path: '/users', handler: () => helper.value });
+  }
+};`);
+
+  const { adapter, kernel } = createKernel(workspace);
+  await kernel.start();
+  try {
+    assert.equal(await adapter.routes.get('users.index').handler({}, {}), 'v1');
+    await writeFile(helperPath, `module.exports = { value: 'v2' };`);
+    await waitFor(() => kernel.status().builds.length >= 2 && kernel.status().builds[0].status === 'success');
+    assert.equal(await adapter.routes.get('users.index').handler({}, {}), 'v2');
+    assert.deepEqual(kernel.list().map(entry => entry.module.name), ['users']);
+  } finally {
+    await kernel.stop();
+  }
+});
+
 test('a new file dropped into a watched directory is loaded automatically', async () => {
   const workspace = await createWorkspace();
   await mkdir(workspace.modules, { recursive: true });

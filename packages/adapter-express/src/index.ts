@@ -1,10 +1,15 @@
 import { HttpError } from '@hivelet/core';
-import type { HttpAdapter, HttpMethod, RouteDefinition } from '@hivelet/core';
+import type {
+  HttpMethod,
+  RouteBatchOperation,
+  RouteDefinition,
+  TransactionalHttpAdapter
+} from '@hivelet/core';
 import express, { Router } from 'express';
 import type { Application, NextFunction, Request, Response } from 'express';
 
-export class ExpressAdapter implements HttpAdapter<Request, Response> {
-  private readonly routes = new Map<string, RouteDefinition<Request, Response>>();
+export class ExpressAdapter implements TransactionalHttpAdapter<Request, Response> {
+  private routes = new Map<string, RouteDefinition<Request, Response>>();
   private router = Router();
 
   constructor(app: Application) {
@@ -15,39 +20,32 @@ export class ExpressAdapter implements HttpAdapter<Request, Response> {
   }
 
   registerRoute(definition: RouteDefinition<Request, Response>): void {
-    const previous = this.routes.get(definition.id);
-    this.routes.set(definition.id, Object.freeze({ ...definition }));
-    try {
-      this.rebuildRouter();
-    } catch (error) {
-      if (previous) {
-        this.routes.set(definition.id, previous);
-      } else {
-        this.routes.delete(definition.id);
-      }
-      throw error;
-    }
+    this.applyRouteBatch([{ kind: 'register', definition }]);
   }
 
   unregisterRoute(id: string): void {
-    const definition = this.routes.get(id);
-    if (!definition) {
-      return;
-    }
-
-    this.routes.delete(id);
-    try {
-      this.rebuildRouter();
-    } catch (error) {
-      this.routes.set(id, definition);
-      throw error;
-    }
+    this.applyRouteBatch([{ kind: 'unregister', id }]);
   }
 
-  private rebuildRouter(): void {
+  applyRouteBatch(operations: readonly RouteBatchOperation<Request, Response>[]): void {
+    if (operations.length === 0) return;
+    const routes = new Map(this.routes);
+    for (const operation of operations) {
+      if (operation.kind === 'register') {
+        routes.set(operation.definition.id, Object.freeze({ ...operation.definition }));
+      } else {
+        routes.delete(operation.id);
+      }
+    }
+    const router = this.buildRouter(routes);
+    this.routes = routes;
+    this.router = router;
+  }
+
+  private buildRouter(routes: ReadonlyMap<string, RouteDefinition<Request, Response>>): Router {
     const router = Router();
 
-    for (const definition of this.routes.values()) {
+    for (const definition of routes.values()) {
       const method = definition.method.toLowerCase() as Lowercase<HttpMethod>;
       router[method](definition.path, async (request: Request, response: Response, next: NextFunction) => {
         try {
@@ -67,6 +65,6 @@ export class ExpressAdapter implements HttpAdapter<Request, Response> {
       });
     }
 
-    this.router = router;
+    return router;
   }
 }

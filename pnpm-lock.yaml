@@ -186,6 +186,22 @@ importers:
         specifier: ^5.3.0
         version: 5.9.3
 
+  packages/adapter-hono:
+    dependencies:
+      '@hivelet/core':
+        specifier: workspace:^
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.33
+      hono:
+        specifier: ^4.9.0
+        version: 4.13.1
+      typescript:
+        specifier: ^5.3.0
+        version: 5.9.3
+
   packages/adapter-nest:
     dependencies:
       '@hivelet/adapter-express':
@@ -1476,6 +1492,10 @@ packages:
 
   hmac-drbg@1.0.1:
     resolution: {integrity: sha512-Tti3gMqLdZfhOQY1Mzf/AanLiqh1WTiJgEj26ZuYQ9fbkLomzGchCws4FyrSd4VkpBfiNhaE1On+lOz894jvXg==}
+
+  hono@4.13.1:
+    resolution: {integrity: sha512-kdJoFVv2xmayw6cY09H7AbMJMt8Jn5jdlEdXsP7AGBdF2DIptVlKlOLKXP41yPip4/a3yQPv9gVcJYI8YY04dw==}
+    engines: {node: '>=16.9.0'}
 
   hsl-to-rgb-for-reals@1.1.1:
     resolution: {integrity: sha512-LgOWAkrN0rFaQpfdWBQlv/VhkOxb5AsBjk6NQVx4yEzWS923T07X0M1Y0VNko2H52HeSpZrZNNMJ0aFqsdVzQg==}
@@ -4640,6 +4660,8 @@ snapshots:
       hash.js: 1.1.7
       minimalistic-assert: 1.0.1
       minimalistic-crypto-utils: 1.0.1
+
+  hono@4.13.1: {}
 
   hsl-to-rgb-for-reals@1.1.1: {}
 

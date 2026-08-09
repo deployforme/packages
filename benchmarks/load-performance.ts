@@ -1,4 +1,4 @@
-import { Kernel, createRuntimeContext } from '@hivelet/core';
+import { Kernel } from '@hivelet/core';
 import { ExpressAdapter } from '@hivelet/adapter-express';
 import express from 'express';
 import * as fs from 'node:fs';
@@ -36,7 +36,7 @@ async function benchmarkModuleLoad(): Promise<void> {
 
   const app = express();
   const adapter = new ExpressAdapter(app);
-  const kernel = new Kernel(createRuntimeContext(adapter));
+  const kernel = new Kernel({ http: adapter }, { versioning: { enabled: false } });
 
   const scenarios = [
     { name: 'Small Module', routes: 5 },
@@ -79,6 +79,7 @@ async function benchmarkModuleLoad(): Promise<void> {
   }
 
   fs.rmSync(path.join(__dirname, 'temp'), { recursive: true, force: true });
+  await kernel.stop();
 }
 
 benchmarkModuleLoad().catch(console.error);

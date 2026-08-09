@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -34,6 +34,12 @@ interface ModuleIndex {
   revisions: ModuleRevision[];
 }
 
+export interface PreparedRevision {
+  readonly revision: ModuleRevision;
+  commit(): ModuleRevision;
+  abort(): void;
+}
+
 const DEFAULT_DIRECTORY = '.hivelet/versions';
 const DEFAULT_KEEP = 20;
 const INDEX_FILE = 'index.json';
@@ -66,14 +72,38 @@ export class VersionStore {
     readonly modulePath: string;
     readonly version: string;
     readonly restoredFrom?: number;
+    readonly source?: Buffer;
   }): ModuleRevision {
-    const source = fs.readFileSync(path.resolve(input.modulePath));
+    const prepared = this.prepare(input);
+    try {
+      return prepared.commit();
+    } catch (error) {
+      prepared.abort();
+      throw error;
+    }
+  }
+
+  /** Prepares a durable snapshot without changing the active revision index. */
+  prepare(input: {
+    readonly moduleName: string;
+    readonly modulePath: string;
+    readonly version: string;
+    readonly restoredFrom?: number;
+    readonly source?: Buffer;
+  }): PreparedRevision {
+    this.assertModuleName(input.moduleName);
+    const modulePath = path.resolve(input.modulePath);
+    const source = input.source ?? fs.readFileSync(modulePath);
     const checksum = createHash('sha256').update(source).digest('hex');
     const index = this.load(input.moduleName);
     const latest = index.revisions.at(-1);
 
     if (latest && latest.checksum === checksum && input.restoredFrom === undefined) {
-      return latest;
+      return {
+        revision: latest,
+        commit: () => latest,
+        abort: () => undefined
+      };
     }
 
     const revision = (latest?.revision ?? 0) + 1;
@@ -81,12 +111,14 @@ export class VersionStore {
     const moduleDirectory = this.moduleDirectory(input.moduleName);
 
     fs.mkdirSync(moduleDirectory, { recursive: true });
-    fs.writeFileSync(path.join(moduleDirectory, snapshot), source);
+    const snapshotPath = path.join(moduleDirectory, snapshot);
+    const temporarySnapshot = this.temporaryPath(snapshotPath);
+    this.writeDurableFile(temporarySnapshot, source);
 
     const record: ModuleRevision = {
       revision,
       moduleName: input.moduleName,
-      modulePath: path.resolve(input.modulePath),
+      modulePath,
       version: input.version,
       checksum,
       recordedAt: new Date().toISOString(),
@@ -95,22 +127,58 @@ export class VersionStore {
       restoredFrom: input.restoredFrom
     };
 
-    index.revisions = index.revisions.map(entry =>
-      entry.status === 'active' ? { ...entry, status: 'superseded' as const } : entry
-    );
-    index.revisions.push(record);
-    this.prune(index);
-    this.persist(index);
+    let settled = false;
+    return {
+      revision: record,
+      commit: () => {
+        if (settled) {
+          throw new Error(`Revision ${input.moduleName}@r${revision} is already settled`);
+        }
 
-    return record;
+        const next: ModuleIndex = {
+          moduleName: index.moduleName,
+          revisions: [
+            ...index.revisions.map(entry =>
+              entry.status === 'active' ? { ...entry, status: 'superseded' as const } : entry
+            ),
+            record
+          ]
+        };
+        const removed = this.trim(next);
+
+        try {
+          fs.renameSync(temporarySnapshot, snapshotPath);
+          this.persist(next);
+          settled = true;
+          this.removeSnapshots(input.moduleName, removed);
+          return record;
+        } catch (error) {
+          try {
+            fs.rmSync(temporarySnapshot, { force: true });
+            fs.rmSync(snapshotPath, { force: true });
+          } catch {
+            // Preserve the primary persistence error.
+          }
+          throw error;
+        }
+      },
+      abort: () => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        fs.rmSync(temporarySnapshot, { force: true });
+      }
+    };
   }
 
   /** Marks a failed load attempt so the history shows what was rejected and why. */
   recordFailure(moduleName: string, modulePath: string, error: string): void {
+    this.assertModuleName(moduleName);
     const index = this.load(moduleName);
     const latest = index.revisions.at(-1);
 
-    index.revisions.push({
+    const next: ModuleIndex = { moduleName, revisions: [...index.revisions, {
       revision: (latest?.revision ?? 0) + 1,
       moduleName,
       modulePath: path.resolve(modulePath),
@@ -120,10 +188,11 @@ export class VersionStore {
       snapshot: '',
       status: 'failed',
       error
-    });
+    }] };
 
-    this.prune(index);
-    this.persist(index);
+    const removed = this.trim(next);
+    this.persist(next);
+    this.removeSnapshots(moduleName, removed);
   }
 
   /** Full history, oldest first. */
@@ -177,6 +246,7 @@ export class VersionStore {
   }
 
   private load(moduleName: string): ModuleIndex {
+    this.assertModuleName(moduleName);
     const cached = this.cache.get(moduleName);
     if (cached) {
       return cached;
@@ -186,14 +256,11 @@ export class VersionStore {
     let index: ModuleIndex = { moduleName, revisions: [] };
 
     if (fs.existsSync(indexPath)) {
-      try {
-        const parsed = JSON.parse(fs.readFileSync(indexPath, 'utf8')) as ModuleIndex;
-        if (Array.isArray(parsed.revisions)) {
-          index = { moduleName, revisions: parsed.revisions };
-        }
-      } catch {
-        // A corrupt index must not stop the runtime; start a fresh history instead.
+      const parsed = JSON.parse(fs.readFileSync(indexPath, 'utf8')) as ModuleIndex;
+      if (!Array.isArray(parsed.revisions)) {
+        throw new Error(`Invalid version index for ${moduleName}`);
       }
+      index = { moduleName, revisions: parsed.revisions };
     }
 
     this.cache.set(moduleName, index);
@@ -203,22 +270,33 @@ export class VersionStore {
   private persist(index: ModuleIndex): void {
     const moduleDirectory = this.moduleDirectory(index.moduleName);
     fs.mkdirSync(moduleDirectory, { recursive: true });
-    fs.writeFileSync(path.join(moduleDirectory, INDEX_FILE), `${JSON.stringify(index, null, 2)}\n`);
+    const indexPath = path.join(moduleDirectory, INDEX_FILE);
+    const temporaryIndex = this.temporaryPath(indexPath);
+    try {
+      this.writeDurableFile(temporaryIndex, `${JSON.stringify(index, null, 2)}\n`);
+      fs.renameSync(temporaryIndex, indexPath);
+    } catch (error) {
+      fs.rmSync(temporaryIndex, { force: true });
+      throw error;
+    }
     this.cache.set(index.moduleName, index);
   }
 
-  private prune(index: ModuleIndex): void {
+  private trim(index: ModuleIndex): ModuleRevision[] {
     if (index.revisions.length <= this.keep) {
-      return;
+      return [];
     }
 
-    const removed = index.revisions.splice(0, index.revisions.length - this.keep);
+    return index.revisions.splice(0, index.revisions.length - this.keep);
+  }
+
+  private removeSnapshots(moduleName: string, removed: readonly ModuleRevision[]): void {
     for (const revision of removed) {
       if (!revision.snapshot) {
         continue;
       }
       try {
-        fs.rmSync(path.join(this.moduleDirectory(index.moduleName), revision.snapshot), { force: true });
+        fs.rmSync(path.join(this.moduleDirectory(moduleName), revision.snapshot), { force: true });
       } catch {
         // Best effort cleanup only.
       }
@@ -227,5 +305,25 @@ export class VersionStore {
 
   private moduleDirectory(moduleName: string): string {
     return path.join(this.directory, encodeURIComponent(moduleName));
+  }
+
+  private temporaryPath(target: string): string {
+    return `${target}.${process.pid}.${randomUUID()}.tmp`;
+  }
+
+  private writeDurableFile(target: string, data: string | Buffer): void {
+    const descriptor = fs.openSync(target, 'wx', 0o600);
+    try {
+      fs.writeFileSync(descriptor, data);
+      fs.fsyncSync(descriptor);
+    } finally {
+      fs.closeSync(descriptor);
+    }
+  }
+
+  private assertModuleName(moduleName: string): void {
+    if (!/^[a-z0-9][a-z0-9_-]*$/.test(moduleName)) {
+      throw new TypeError('moduleName must use lowercase letters, numbers, hyphens, or underscores');
+    }
   }
 }

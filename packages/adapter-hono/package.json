@@ -1,0 +1,40 @@
+{
+  "name": "@hivelet/adapter-hono",
+  "version": "1.0.0",
+  "description": "Hono adapter for Hivelet runtime modules",
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "engines": { "node": ">=20" },
+  "keywords": ["hivelet", "hono", "adapter", "hot-reload"],
+  "author": "Hacı Mert Gökhan <hacimertgokhan@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hivelet/packages.git",
+    "directory": "packages/adapter-hono"
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "tsc --noEmit --pretty false",
+    "typecheck": "tsc --noEmit --pretty false",
+    "test": "node --test test/*.test.js",
+    "prepublishOnly": "pnpm build"
+  },
+  "dependencies": { "@hivelet/core": "workspace:^" },
+  "peerDependencies": { "hono": "^4.0.0" },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "hono": "^4.9.0",
+    "typescript": "^5.3.0"
+  }
+}

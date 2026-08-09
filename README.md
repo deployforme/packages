@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**Runtime modules for modern Node.js applications**
+**Transactional runtime modules for modern Node.js applications**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen)](https://nodejs.org)
@@ -20,7 +20,7 @@ Hivelet lets a running Node.js application load, update, and remove HTTP modules
 - Automatic file watching for one module, many files, or entire directories
 - Decorator-based HTTP modules with explicit input, status, error, and version metadata
 - A protected flow dashboard with request volume, error rate, and latency telemetry
-- Express and NestJS adapters with one structured Hivelet log stream
+- Express, NestJS, and Hono adapters with transactional route batches
 
 ## Packages
 
@@ -29,6 +29,7 @@ Hivelet lets a running Node.js application load, update, and remove HTTP modules
 | [`@hivelet/core`](./packages/core) | Runtime kernel, decorators, monitoring, and version snapshots |
 | [`@hivelet/adapter-express`](./packages/adapter-express) | Dynamic route integration for Express |
 | [`@hivelet/adapter-nest`](./packages/adapter-nest) | NestJS bootstrap, dependency injection, lifecycle, and logging |
+| [`@hivelet/adapter-hono`](./packages/adapter-hono) | Immutable dispatcher swaps for Hono on Node.js |
 
 ## Install
 
@@ -43,6 +44,12 @@ For NestJS:
 ```bash
 pnpm add @hivelet/core @hivelet/adapter-nest \
   @nestjs/common @nestjs/core @nestjs/platform-express express
+```
+
+For Hono:
+
+```bash
+pnpm add @hivelet/core @hivelet/adapter-hono hono
 ```
 
 ## Define a runtime module
@@ -112,9 +119,11 @@ void HiveletNestFactory.start(AppModule, {
 
 ## Safe hot reload
 
-Hivelet compares routes by `id`, method, path, and success status. If those fields stay the same, the mounted route proxy remains in place and switches to the new handler only after the module activates successfully. In-flight requests finish on the handler they started with.
+Hivelet compares routes by `id`, method, path, and success status. If those fields stay the same, the mounted route proxy remains in place and switches to the new handler only after the module activates successfully. In-flight requests finish on the generation they started with, and the previous module is disposed only after those requests drain.
 
-New routes are registered before removed routes are detached. If activation fails, Hivelet restores the previous working route set.
+Batch-capable adapters commit all structural route changes at once. Revision metadata uses durable temporary files and atomic renames; a persistence failure rolls route activation back before the candidate is rejected.
+
+Autonomous mode discovers `*.module.js` and `*.module.cjs` entry files by default. Local CommonJS dependency changes reload every owning entry module without treating helper files as standalone modules.
 
 ## Flow dashboard
 

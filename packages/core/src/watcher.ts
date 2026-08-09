@@ -14,6 +14,8 @@ export interface ModuleWatcherOptions {
   readonly paths: readonly string[];
   /** File extensions treated as modules. Defaults to `.js`, `.cjs`, `.mjs`. */
   readonly extensions?: readonly string[];
+  /** Entry filename suffix before the extension. Explicit file roots bypass this filter. */
+  readonly entrySuffix?: string;
   /** Path fragments that are skipped entirely. Matched case-insensitively. */
   readonly ignore?: readonly string[];
   /** Quiet period in milliseconds before an event is emitted. Defaults to 150. */
@@ -28,6 +30,7 @@ export interface ModuleWatcher {
   on(event: 'add' | 'change' | 'remove', listener: (modulePath: string) => void): this;
   on(event: 'error', listener: (error: unknown) => void): this;
   on(event: 'all', listener: (payload: WatchEvent) => void): this;
+  on(event: 'dependency', listener: (dependencyPath: string) => void): this;
 }
 
 /**
@@ -40,6 +43,9 @@ export class ModuleWatcher extends EventEmitter {
   private readonly extensions: ReadonlySet<string>;
   private readonly ignore: readonly string[];
   private readonly debounce: number;
+  private readonly entrySuffix: string;
+  private readonly explicitFiles = new Set<string>();
+  private readonly dependencies = new Set<string>();
 
   private readonly watchers = new Map<string, fs.FSWatcher>();
   private readonly known = new Set<string>();
@@ -57,9 +63,20 @@ export class ModuleWatcher extends EventEmitter {
     this.extensions = new Set((options.extensions ?? DEFAULT_EXTENSIONS).map(value => value.toLowerCase()));
     this.ignore = [...DEFAULT_IGNORE, ...(options.ignore ?? [])].map(value => value.toLowerCase());
     this.debounce = options.debounce ?? DEFAULT_DEBOUNCE;
+    this.entrySuffix = options.entrySuffix ?? '.module';
 
     if (!Number.isInteger(this.debounce) || this.debounce < 0 || this.debounce > 60000) {
       throw new RangeError('debounce must be an integer between 0 and 60000');
+    }
+  }
+
+  /** Replaces the exact local dependency paths observed for active entry modules. */
+  setDependencies(dependencies: readonly string[]): void {
+    this.dependencies.clear();
+    for (const dependency of dependencies) {
+      const resolved = path.resolve(dependency);
+      this.dependencies.add(resolved);
+      if (this.running) this.watchDirectory(path.dirname(resolved));
     }
   }
 
@@ -106,6 +123,7 @@ export class ModuleWatcher extends EventEmitter {
     }
 
     if (stats.isFile()) {
+      if (this.roots.includes(target)) this.explicitFiles.add(target);
       if (this.isModuleFile(target)) {
         this.known.add(target);
         this.watchDirectory(path.dirname(target));
@@ -196,6 +214,11 @@ export class ModuleWatcher extends EventEmitter {
       return;
     }
 
+    if (this.dependencies.has(target)) {
+      this.emit('dependency', target);
+      return;
+    }
+
     if (!this.isModuleFile(target)) {
       return;
     }
@@ -221,7 +244,11 @@ export class ModuleWatcher extends EventEmitter {
   }
 
   private isModuleFile(target: string): boolean {
-    return this.extensions.has(path.extname(target).toLowerCase()) && !this.isIgnored(target);
+    const extension = path.extname(target).toLowerCase();
+    const stem = path.basename(target, extension);
+    return this.extensions.has(extension)
+      && (this.explicitFiles.has(target) || stem.endsWith(this.entrySuffix))
+      && !this.isIgnored(target);
   }
 
   private isIgnored(target: string): boolean {

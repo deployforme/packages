@@ -1,13 +1,18 @@
 import express from 'express';
-import type { Request, Response } from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import { Kernel, createRuntimeContext } from '@hivelet/core';
 import { ExpressAdapter } from '@hivelet/adapter-express';
 import * as path from 'node:path';
+import { timingSafeEqual } from 'node:crypto';
 
 const app = express();
 app.use(express.json());
 
 const modulesPath = path.join(__dirname, 'modules');
+const adminKey = process.env.HIVELET_ADMIN_KEY;
+if (!adminKey) {
+  throw new Error('HIVELET_ADMIN_KEY is required for production lifecycle endpoints');
+}
 
 const adapter = new ExpressAdapter(app);
 const kernel = new Kernel(createRuntimeContext(adapter));
@@ -17,9 +22,20 @@ kernel
   .then(() => console.log('User module loaded from production build'))
   .catch(console.error);
 
+app.use('/admin', (req: Request, res: Response, next: NextFunction) => {
+  const provided = req.header('x-hivelet-admin-key') ?? '';
+  const expectedBuffer = Buffer.from(adminKey);
+  const providedBuffer = Buffer.from(provided);
+  if (providedBuffer.length !== expectedBuffer.length || !timingSafeEqual(providedBuffer, expectedBuffer)) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  next();
+});
+
 app.post('/admin/load', async (req: Request, res: Response) => {
   try {
-    const modulePath = String(req.body?.path ?? '');
+    const modulePath = resolveModulePath(String(req.body?.module ?? ''));
     await kernel.load(modulePath);
     res.json({ success: true, message: `Module loaded from ${modulePath}` });
   } catch (error) {
@@ -30,7 +46,7 @@ app.post('/admin/load', async (req: Request, res: Response) => {
 
 app.post('/admin/reload/:module', async (req: Request, res: Response) => {
   try {
-    const modulePath = path.join(modulesPath, `${req.params.module}.module.js`);
+    const modulePath = resolveModulePath(req.params.module);
     await kernel.reload(modulePath);
     res.json({ success: true, message: `Module ${req.params.module} reloaded` });
   } catch (error) {
@@ -54,3 +70,10 @@ app.listen(3000, () => {
   console.log('Admin: http://localhost:3000/admin/modules');
   console.log('Modules path:', modulesPath);
 });
+
+function resolveModulePath(moduleName: string): string {
+  if (!/^[a-z0-9_-]+$/.test(moduleName)) {
+    throw new TypeError('Invalid module name');
+  }
+  return path.join(modulesPath, `${moduleName}.module.js`);
+}

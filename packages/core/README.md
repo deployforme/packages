@@ -7,6 +7,10 @@ Framework-agnostic runtime kernel for Node.js. Load, update, and remove HTTP mod
 - Hot-reload modules at runtime
 - Endpoint-level route diffing keeps unchanged routes mounted during reloads
 - Exclusive operation queue (no torn writes across `load`/`reload`/`unload`)
+- In-flight request draining before old module disposal
+- Transactional adapter batches and durable revision commits
+- CommonJS dependency-aware autonomous reload
+- Capacity limits and vendor-neutral monitoring export
 - Cross-module route ownership checks
 - Built-in monitoring dashboard (HTTP) and in-process snapshot
 - Strict, framework-agnostic TypeScript types
@@ -84,7 +88,7 @@ module.exports = {
 };
 ```
 
-`name` and `version` are required and must be non-empty. `register` is required; `dispose` is optional.
+`name` must use lowercase letters, numbers, hyphens, or underscores. `version` and `register` are required; `dispose` is optional.
 
 ## API
 
@@ -103,6 +107,7 @@ new Kernel(context, config?);
 | `list()` | `readonly ModuleMetadata[]` | Currently active modules |
 | `get(name)` | `ModuleMetadata \| undefined` | Single module by name |
 | `status()` | `MonitoringSnapshot` | Builds, active modules, and stats |
+| `flushMonitoring()` | `Promise<void>` | Push a snapshot to the configured exporter |
 | `stop()` | `Promise<void>` | Unload everything and stop the dashboard |
 
 All mutating operations (`load`, `reload`, `unload`, `stop`) run through a single exclusive queue.
@@ -144,13 +149,26 @@ new Kernel(context, {
     authFile: '.hivelet/dashboard-auth.json',
     sessionTtl: 43200000 // 12 hours
   },
-  buildHistoryLimit: 100 // 1..1000
+  lifecycle: {
+    drainTimeout: 30000,
+    maxPendingOperations: 1000
+  },
+  capacity: {
+    maxModules: 1000,
+    maxRoutesPerModule: 5000,
+    maxTotalRoutes: 20000
+  },
+  monitoring: {
+    exportInterval: 10000,
+    exporter: { export: snapshot => metrics.write(snapshot) }
+  },
+  buildHistoryLimit: 100
 });
 ```
 
 The dashboard only binds when `enabled: true`. `port: 0` lets the OS pick a free port.
-On first start Hivelet generates a strong password and prints it once through the kernel
-logger as `Dashboard password (shown once): ...`. Only a random-salt SHA-512 verifier is
+On first start Hivelet generates a strong password and writes it once to stderr, outside
+structured application logs. Only a random-salt SHA-512 verifier is
 persisted in `authFile`; removing that file before startup rotates the password.
 
 ## Autonomous mode
@@ -160,6 +178,7 @@ new Kernel(context, {
   autonomous: {
     enabled: true,
     paths: ['./dist/modules'],
+    entrySuffix: '.module',
     loadOnStart: true,
     unloadOnDelete: true,
     retries: 2,
@@ -169,7 +188,7 @@ new Kernel(context, {
 });
 ```
 
-Paths may point to module files or directories. Directories are discovered recursively and watched for changes. `autoRollback` is disabled by default because enabling it allows Hivelet to restore the last known good module source on disk after all reload retries fail.
+Paths may point to module files or directories. Directory discovery accepts `.module.js` and `.module.cjs` entries by default. Local CommonJS dependencies are tracked and reload their owner entries when changed. `autoRollback` is disabled by default because enabling it allows Hivelet to restore the last known good module source on disk after all reload retries fail.
 
 ## Monitoring
 
@@ -198,6 +217,7 @@ The HTTP dashboard serves the same data:
 Use an official adapter to wire the kernel into a framework:
 
 - [@hivelet/adapter-express](https://www.npmjs.com/package/@hivelet/adapter-express) — Express.js
+- [@hivelet/adapter-hono](https://www.npmjs.com/package/@hivelet/adapter-hono) — Hono on Node.js
 - [@hivelet/adapter-nest](https://www.npmjs.com/package/@hivelet/adapter-nest) — NestJS (platform-express)
 
 ## License

@@ -39,8 +39,9 @@
     "docs:build": "node scripts/build-docs.cjs",
     "publish:core": "pnpm --dir packages/core publish --access public",
     "publish:adapter-express": "pnpm --dir packages/adapter-express publish --access public",
+    "publish:adapter-hono": "pnpm --dir packages/adapter-hono publish --access public",
     "publish:adapter-nest": "pnpm --dir packages/adapter-nest publish --access public",
-    "publish:all": "pnpm build && pnpm publish:core && pnpm publish:adapter-express && pnpm publish:adapter-nest"
+    "publish:all": "pnpm build && pnpm publish:core && pnpm publish:adapter-express && pnpm publish:adapter-hono && pnpm publish:adapter-nest"
   },
   "devDependencies": {
     "turbo": "^2.0.0",
