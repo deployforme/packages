@@ -1,10 +1,11 @@
-# Configuration
+# Yapılandırma
 
-Hivelet konfigürasyonu üç katmandan oluşur:
+Hivelet yapılandırması üç katmandan oluşur:
 
-1. **Kernel config** — constructor'a geçilen ve runtime'da validate edilen obje.
-2. **Çevre değişkenleri** — host uygulamasının process.env'i okuması (Hivelet'e ait değil).
-3. **Container kayıtları** — host'un DI servislerini register etmesi.
+1. **Kernel config** - constructor'a geçirilen ve runtime'da doğrulanan nesne.
+2. **Ortam değişkenleri** - host uygulamasının okuduğu değerler (`HIVELET_LOG_LEVEL`
+   değişkenini logger doğrudan okur).
+3. **Container kayıtları** - host tarafından sağlanan DI servisleri.
 
 ## Kernel config
 
@@ -12,87 +13,99 @@ Hivelet konfigürasyonu üç katmandan oluşur:
 interface KernelConfig {
   dashboard?: DashboardConfig;
   buildHistoryLimit?: number;
+  autonomous?: AutonomousConfig;
+  versioning?: VersioningConfig;
 }
 
 interface DashboardConfig {
-  enabled?: boolean;        // default: false
-  host?: string;            // default: '127.0.0.1'
-  port?: number;            // default: 0 (ephemeral)
-  refreshInterval?: number; // default: 3000 (ms)
+  enabled?: boolean;        // varsayılan: false
+  host?: string;            // varsayılan: '127.0.0.1'
+  port?: number;            // varsayılan: 0 (geçici port)
+  refreshInterval?: number; // varsayılan: 3000 (ms)
+}
+
+interface AutonomousConfig {
+  enabled?: boolean;        // varsayılan: false
+  paths?: string[];         // açıkken zorunlu
+  extensions?: string[];    // varsayılan: ['.js', '.cjs']
+  entrySuffix?: string;     // varsayılan: '.module'
+  ignore?: string[];        // varsayılan: []
+  debounce?: number;        // varsayılan: 150 (ms)
+  loadOnStart?: boolean;    // varsayılan: true
+  unloadOnDelete?: boolean; // varsayılan: true
+  retries?: number;         // varsayılan: 2
+  retryDelay?: number;      // varsayılan: 500 (ms)
+  autoRollback?: boolean;   // varsayılan: false
+}
+
+interface VersioningConfig {
+  enabled?: boolean;        // varsayılan: true
+  directory?: string;       // varsayılan: '.hivelet/versions'
+  keep?: number;            // varsayılan: 20
 }
 ```
 
-### Varsayılanlar
+Otonom yollar dizin veya doğrudan modül dosyası olabilir. Göreli yollar host process'in
+çalışma dizinine göre çözülür. Yapılandırılmış dizin başlangıçta olmayabilir; Hivelet
+derleyici dizini oluşturana kadar en yakın mevcut üst dizini izler. Yalnız `extensions` ve
+`entrySuffix` ile eşleşen dosyalar yüklenir.
 
-```ts
-const DEFAULT_CONFIG = {
-  dashboard: {
-    enabled: false,
-    host: '127.0.0.1',
-    port: 0,
-    refreshInterval: 3000
-  },
-  buildHistoryLimit: 100
-};
-```
+`node_modules`, `.git` ve `.hivelet` her zaman yok sayılır. `ignore`, büyük/küçük harf
+duyarsız ek yol parçaları tanımlar.
 
-### Validation kuralları
+## Doğrulama
 
-| Alan                          | Kural                                  | Hata                |
-| ----------------------------- | -------------------------------------- | ------------------- |
-| `dashboard.enabled`           | boolean                                | `TypeError`         |
-| `dashboard.host`              | boş olmayan string                     | `TypeError`         |
-| `dashboard.port`              | 0 ≤ tam sayı ≤ 65535                   | `RangeError`        |
-| `dashboard.refreshInterval`   | 500 ≤ tam sayı ≤ 60000                 | `RangeError`        |
-| `buildHistoryLimit`           | 1 ≤ tam sayı ≤ 1000                    | `RangeError`        |
+| Alan | Kural | Hata |
+| --- | --- | --- |
+| `dashboard.port` | 0 ile 65535 arasında tam sayı | `RangeError` |
+| `dashboard.refreshInterval` | 500 ile 60000 arasında tam sayı | `RangeError` |
+| `buildHistoryLimit` | 1 ile 1000 arasında tam sayı | `RangeError` |
+| `autonomous.paths` | Açıkken en az bir boş olmayan string | `TypeError` |
+| `autonomous.extensions` | Boş olmayan string dizisi | `TypeError` |
+| `autonomous.debounce` | 0 ile 60000 arasında tam sayı | `RangeError` |
+| `autonomous.retries` | 0 ile 10 arasında tam sayı | `RangeError` |
+| `autonomous.retryDelay` | 0 ile 60000 arasında tam sayı | `RangeError` |
+| `versioning.keep` | 1 ile 1000 arasında tam sayı | `RangeError` |
 
-Validation `resolveKernelConfig()` içinde yapılır. Geçersiz config fırlatılırsa `new Kernel(...)` exception atar.
+Doğrulama `resolveKernelConfig()` içinde yapılır. Geçersiz yapılandırma ilk reload'da değil,
+`new Kernel(...)` çağrısında hata verir. Çözümlenmiş config, `RuntimeContext` ve
+`ModuleMetadata` nesneleri dondurulur ve değiştirilemez.
 
-### Resolved config
+## Ortam değişkenleri
 
-Validation sonrası `ResolvedKernelConfig` döner; alanlar `readonly` ve dondurulmuştur. Bu obje `Kernel` instance'ı üzerinden erişilemez (private); ancak `Monitor` ve `Dashboard` resolved config'i okuyarak çalışır.
-
-### Frozen davranışı
-
-Resolved config `Object.freeze` ile dondurulur. Kullanıcı tarafından mutate edilemez. Aynı davranış `RuntimeContext` ve `ModuleMetadata` için de geçerlidir.
-
-## Çevre değişkenleri
-
-Hivelet'in kendisi ortam değişkeni okumaz. Host uygulamanız okur:
+Hivelet doğrudan yalnız `HIVELET_LOG_LEVEL` değişkenini okur. Diğer değerleri host
+uygulamanız yapılandırmaya dönüştürür:
 
 ```ts
 const kernel = new Kernel(createRuntimeContext(adapter), {
   dashboard: {
     enabled: process.env.DASHBOARD_ENABLED === '1',
     port: Number(process.env.DASHBOARD_PORT ?? 5000)
+  },
+  autonomous: {
+    enabled: process.env.HIVELET_AUTONOMOUS === '1',
+    paths: ['./dist/modules']
   }
 });
 ```
-
-Tipik değişkenler:
-
-| Değişken             | Tip        | Varsayılan     | Açıklama                |
-| -------------------- | ---------- | -------------- | ----------------------- |
-| `PORT`               | number     | `3000`         | Ana API port'u (host)   |
-| `DASHBOARD_PORT`     | number     | `5000`         | Dashboard port'u (host) |
-| `DASHBOARD_ENABLED`  | boolean    | `false`        | Dashboard açık mı?      |
-| `LOG_LEVEL`          | string     | `info`         | Logger seviyesi (host)  |
 
 ## Container kayıtları
 
 ```ts
 const container = new SimpleContainer();
 container.register('taskStore', new TaskStore());
-container.register('logger', new StructuredLogger('host'));
+container.register('logger', createHostLogger());
 ```
 
-- Token: `string | symbol`.
-- Servis: herhangi bir değer (genellikle bir sınıf instance'ı).
-- Aynı token ile ikinci `register` çağrısı hata fırlatır.
-- Modüller **kayıt yapamaz**, sadece `get()` ile okuyabilir.
+- Token tipi `string | symbol` olabilir.
+- Servis herhangi bir değer, genellikle sınıf instance'ıdır.
+- Aynı token'ı ikinci kez kaydetmek hata verir.
+- Modüller kayıt yapamaz; yalnız `get()` ile okuyabilir.
 
-Detaylar: [Guides → Dependency injection](../guides/dependency-injection.md).
+Detaylar: [Dependency injection](../guides/dependency-injection.md).
 
-## Bir sonraki adım
+## Sonraki adım
 
-- [API → Core](../api/core.md) — `Kernel`, `createRuntimeContext`, tipler
+- [Otonomi](autonomy.md) - otonom seçeneklerin davranışı
+- [Otomatik deployment](../guides/automatic-deployment.md) - build çıktısını izleme
+- [Core API](../api/core.md) - `Kernel`, `createRuntimeContext` ve tipler

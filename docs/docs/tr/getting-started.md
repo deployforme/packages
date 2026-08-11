@@ -53,11 +53,12 @@ async function main(): Promise<void> {
   const app = express();
   const adapter = new ExpressAdapter(app);
   const kernel = new Kernel(createRuntimeContext(adapter), {
-    dashboard: { enabled: true, host: '127.0.0.1', port: 5000 }
+    dashboard: { enabled: true, host: '127.0.0.1', port: 5000 },
+    autonomous: { enabled: true, paths: ['./modules'] }
   });
 
+  // ./modules altındaki modülleri keşfeder, yükler ve izlemeye devam eder.
   await kernel.start();
-  await kernel.load('./modules/greet.module.js');
 
   app.listen(3000, () => {
     console.log('API:      http://localhost:3000');
@@ -84,7 +85,7 @@ curl http://localhost:3000/hello/world
 open http://127.0.0.1:5000/
 ```
 
-## 5. Hot-reload deneyimi
+## 5. Otomatik reload deneyimi
 
 `modules/greet.module.js` içinde:
 
@@ -92,17 +93,23 @@ open http://127.0.0.1:5000/
 version: '1.0.0'   // ← '1.0.1' yap
 ```
 
-Sonra:
+Dosyayı kaydedin. Başka bir komut çalıştırmanız gerekmez. Kernel değişikliği algılar, yeni
+versiyonu yükler, route'ları atomik olarak değiştirir ve yeni bir revizyon kaydeder.
+Dashboard'da yeni build kaydını `success` durumunda görürsünüz.
 
-```bash
-curl -X POST http://localhost:3000/admin/reload/greet
-# → {"success":true,"module":"greet","version":"1.0.1"}
-```
+TypeScript projelerinde `paths` değerini `['./dist/modules']` olarak ayarlayın ve
+`src/modules` altındaki kaynakları düzenleyin. Derleyiciniz CommonJS çıktısını üretir;
+Hivelet tamamlanan her değişikliği otomatik deploy eder. Host başladığında `dist/modules`
+henüz yoksa ilk build yine keşfedilir. Hivelet derleyiciyi kendisi çalıştırmaz. Ayrıntılar
+için [Otomatik deployment](guides/automatic-deployment.md) rehberine bakın.
 
-Tarayıcıda dashboard'a baktığınızda yeni build kaydını `success` durumunda görürsünüz.
+Manuel kontrol isterseniz `autonomous` özelliğini kapalı bırakıp
+`kernel.reload('./modules/greet.module.js')` çağırabilirsiniz.
 
 ## Sonraki adımlar
 
 - [Concepts → Modules](concepts/modules.md) — modül sözleşmesinin tüm ayrıntıları
+- [Concepts → Otonomi](concepts/autonomy.md) — watcher ve güvenli aktivasyon
+- [Guides → Otomatik deployment](guides/automatic-deployment.md) — build çıktısını Hivelet'e bağlama
 - [Guides → Dependency injection](guides/dependency-injection.md) — servisleri paylaşma
 - [Examples → TaskBoard](examples/taskboard.md) — daha büyük, gerçek bir uygulama

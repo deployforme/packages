@@ -28,11 +28,16 @@ Pratik, görev-bazlı rehberler.
 
     Production'da modül değiştirme stratejileri.
 
+-   :material-sync:{ .lg .middle } **[Otomatik deployment](automatic-deployment.md)**
+
+    Derlenmiş build çıktısını otomatik olarak keşfetme ve aktive etme.
+
 </div>
 
 ## Hangi rehberi ne zaman okumalı?
 
 - İlk kez servis paylaşacaksanız → **Dependency injection**.
 - Bir modülü düzenleyip canlıya alacaksanız → **Hot reload**.
+- Build çıktısını reload endpoint'i olmadan aktive edecekseniz → **Otomatik deployment**.
 - Production deploy stratejinizi kuruyorsanız → **Zero-downtime deployment**.
 - Process yönetimi (systemd, pm2, container) yapıyorsanız → **Graceful shutdown**.

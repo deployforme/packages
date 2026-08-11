@@ -8,11 +8,11 @@ Hivelet, bir Node.js uygulamasının çalışma zamanında HTTP route'larını, 
 
 | Sorun                                            | Hivelet nasıl çözer                              |
 | ------------------------------------------------ | ------------------------------------------------ |
-| Bir route'un kodunu değiştirmek için restart     | `kernel.reload(path)` ile saniye altı hot-reload |
-| Eski modül kaldırılırken gelen istekler düşer    | Atomik route swap                                |
-| Modüller arası paylaşılan state kaybolur         | Container + `dispose()` hook'ları               |
-| Reload sonrası hangi modüllerin durumu ne?       | Yerleşik monitoring dashboard                   |
-| Restart sırasında dashboard kapanmaz             | `kernel.stop()` → tüm kaynakları söker          |
+| Bir route'un kodunu değiştirmek için restart     | Otonom modda otomatik, saniye altı hot-reload    |
+| Eski modül kaldırılırken gelen istekler düşer    | Hata durumunda rollback ile atomik route swap    |
+| Modüller arası paylaşılan state kaybolur         | Container + `dispose()` hook'ları                |
+| Reload sonrası hangi modüllerin durumu ne?       | Yerleşik monitoring dashboard                    |
+| Hatalı deployment'ı tamamen yeniden deploy etme  | Disk üzerinde geçmiş ve tek çağrıyla rollback    |
 
 ## Üç temel söz
 
@@ -29,22 +29,20 @@ import { ExpressAdapter } from '@hivelet/adapter-express';
 
 const app = express();
 const adapter = new ExpressAdapter(app);
-const kernel = new Kernel(createRuntimeContext(adapter));
+const kernel = new Kernel(createRuntimeContext(adapter), {
+  autonomous: { enabled: true, paths: ['./dist/modules'] }
+});
 
 await kernel.start();
-await kernel.load('./modules/users.module.js');
-await kernel.load('./modules/orders.module.js');
-
 app.listen(3000);
 ```
 
-Sonra, `users.module.js`'i düzenleyip:
+`start()`, `./dist/modules` henüz yoksa bile yolu izler. Kaynak modülü düzenlediğinizde
+derleyiciniz `users.module.js` çıktısını üretir; Hivelet yeni versiyonu yükler, route'ları
+atomik olarak değiştirir ve revizyonu kaydeder. Restart veya reload endpoint'i gerekmez.
 
-```bash
-curl -X POST http://localhost:3000/admin/reload/users
-```
-
-… yaparsınız. Sistem yeni versiyonu yükler, eski route'ları söker, yeni route'ları bağlar ve hiçbir istek kaybolmaz.
+Hivelet derleyiciyi çalıştırmaz ve artifact'ları makineler arasında taşımaz. Build veya
+dağıtım sürecinizin yerel dosya sistemine yazdığı derlenmiş çıktıyı izler.
 
 ## Paketler
 
@@ -71,5 +69,7 @@ curl -X POST http://localhost:3000/admin/reload/users
 ## Sırada ne var?
 
 - [Getting started](getting-started.md) — 5 dakikada çalışan bir örnek
+- [Otonomi](concepts/autonomy.md) — reload çağrısını tamamen kaldırma
+- [Otomatik deployment](guides/automatic-deployment.md) — derleyici veya artifact dağıtımını bağlama
 - [Concepts → Kernel](concepts/kernel.md) — `Kernel` yaşam döngüsü
 - [Examples → TaskBoard](examples/taskboard.md) — gerçek uygulama yürüyüşü

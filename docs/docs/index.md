@@ -42,10 +42,13 @@ await kernel.start();
 app.listen(3000);
 ```
 
-That is the whole setup. `start()` discovers every module under `./dist/modules`, loads
-them, and keeps watching the directory. Edit `users.module.js` and save — the kernel
-reloads it, swaps the routes atomically, and records a new revision. No restart, no
-reload endpoint, no `nodemon`.
+That is the whole runtime setup. `start()` discovers every module under `./dist/modules`
+and keeps watching the directory, even if it does not exist yet. Edit the source module;
+when your compiler emits `users.module.js`, Hivelet loads it, swaps the routes atomically,
+and records a new revision. No restart or reload endpoint is required.
+
+Hivelet does not run your compiler or copy artifacts between machines. It watches compiled
+output that your build or delivery process places on the local filesystem.
 
 If you prefer explicit control, autonomous mode is opt-in; `kernel.load(path)` and
 `kernel.reload(path)` still work exactly as before.
@@ -78,6 +81,7 @@ If you prefer explicit control, autonomous mode is opt-in; `kernel.load(path)` a
 
 - [Getting started](getting-started.md) — install and run the first module.
 - [Autonomy](concepts/autonomy.md) — remove the reload call entirely.
+- [Automatic deployment](guides/automatic-deployment.md) — connect a compiler or artifact delivery process.
 - [Logging](concepts/logging.md) — structured, level-aware logs with transports.
 - [Versioning and rollback](tr/guides/zero-downtime.md) — history and undo.
 - [Concepts](concepts/index.md) — how the kernel, modules, and adapters fit together.

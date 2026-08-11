@@ -45,6 +45,11 @@ interface VersioningConfig {
 }
 ```
 
+Autonomous paths may be directories or explicit module files. Relative paths resolve from
+the host process working directory. A configured directory may be absent at startup;
+Hivelet watches its closest existing parent until the compiler creates it. Files are loaded
+only when their extension and `entrySuffix` match.
+
 ### Defaults
 
 ```ts

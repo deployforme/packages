@@ -92,23 +92,8 @@ nav:
       - Logging: concepts/logging.md
       - Monitoring: concepts/monitoring.md
       - Configuration: concepts/configuration.md
-  - API reference:
-      - tr/api/index.md
-      - Core: tr/api/core.md
-      - Express adapter: tr/api/adapter-express.md
-      - Hono adapter: tr/api/adapter-hono.md
-      - Nest adapter: tr/api/adapter-nest.md
   - Guides:
-      - tr/guides/index.md
-      - Dependency injection: tr/guides/dependency-injection.md
-      - Hot reload: tr/guides/hot-reload.md
-      - Graceful shutdown: tr/guides/graceful-shutdown.md
-      - Zero-downtime deployment: tr/guides/zero-downtime.md
-  - Examples:
-      - tr/examples/index.md
-      - TaskBoard: tr/examples/taskboard.md
-      - Express app: tr/examples/express.md
-      - Nest app: tr/examples/nest.md
+      - Automatic deployment: guides/automatic-deployment.md
   - Türkçe:
       - tr/index.md
       - Başlangıç: tr/getting-started.md
@@ -117,8 +102,27 @@ nav:
           - Kernel: tr/concepts/kernel.md
           - Modüller: tr/concepts/modules.md
           - Adapter'lar: tr/concepts/adapters.md
+          - Otonomi: tr/concepts/autonomy.md
           - Yapılandırma: tr/concepts/configuration.md
           - İzleme: tr/concepts/monitoring.md
+      - API referansı:
+          - tr/api/index.md
+          - Core: tr/api/core.md
+          - Express adapter: tr/api/adapter-express.md
+          - Hono adapter: tr/api/adapter-hono.md
+          - Nest adapter: tr/api/adapter-nest.md
+      - Rehberler:
+          - tr/guides/index.md
+          - Dependency injection: tr/guides/dependency-injection.md
+          - Hot reload: tr/guides/hot-reload.md
+          - Otomatik deployment: tr/guides/automatic-deployment.md
+          - Graceful shutdown: tr/guides/graceful-shutdown.md
+          - Zero-downtime deployment: tr/guides/zero-downtime.md
+      - Örnekler:
+          - tr/examples/index.md
+          - TaskBoard: tr/examples/taskboard.md
+          - Express uygulaması: tr/examples/express.md
+          - Nest uygulaması: tr/examples/nest.md
 
 extra:
   generator: false

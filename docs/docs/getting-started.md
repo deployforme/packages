@@ -105,6 +105,12 @@ If you would rather trigger reloads yourself, leave `autonomous` off and call
 `kernel.reload('./modules/greet.module.js')` from an admin route. Both styles are
 supported; see [Autonomy](concepts/autonomy.md).
 
+For TypeScript projects, configure `paths` as `['./dist/modules']` and edit files under
+`src/modules`. Your compiler writes the CommonJS output and Hivelet deploys each completed
+change automatically. The host may start before `dist/modules` exists; the first build is
+still discovered. Hivelet does not run the compiler itself. See
+[Automatic deployment](guides/automatic-deployment.md).
+
 ## 6. Undo a bad change
 
 Every successful load is snapshotted. To go back one revision:
@@ -120,6 +126,7 @@ The previous source is restored on disk and reloaded. See
 
 - [Concepts → Modules](concepts/modules.md) — the full module contract
 - [Concepts → Autonomy](concepts/autonomy.md) — how the supervisor works
+- [Guides → Automatic deployment](guides/automatic-deployment.md) — connect build output to Hivelet
 - [Concepts → Logging](concepts/logging.md) — levels, scopes, and transports
 - [Guides → Dependency injection](tr/guides/dependency-injection.md) — sharing services
 - [Examples → TaskBoard](tr/examples/taskboard.md) — a larger, real application

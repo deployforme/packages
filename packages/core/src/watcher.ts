@@ -88,7 +88,14 @@ export class ModuleWatcher extends EventEmitter {
 
     this.running = true;
     for (const root of this.roots) {
-      this.scan(root);
+      if (fs.existsSync(root)) {
+        this.scan(root);
+      } else {
+        if (this.extensions.has(path.extname(root).toLowerCase())) {
+          this.explicitFiles.add(root);
+        }
+        this.watchClosestExistingDirectory(root);
+      }
     }
 
     return this.list();
@@ -171,8 +178,28 @@ export class ModuleWatcher extends EventEmitter {
     }
   }
 
+  private watchClosestExistingDirectory(target: string): void {
+    let candidate = target;
+    while (true) {
+      try {
+        if (fs.statSync(candidate).isDirectory()) {
+          this.watchDirectory(candidate);
+          return;
+        }
+      } catch {
+        // Keep walking toward an existing parent. Build output may not exist yet.
+      }
+
+      const parent = path.dirname(candidate);
+      if (parent === candidate) {
+        return;
+      }
+      candidate = parent;
+    }
+  }
+
   private schedule(target: string): void {
-    if (!this.running || this.isIgnored(target)) {
+    if (!this.running || this.isIgnored(target) || !this.isRelevant(target)) {
       return;
     }
 
@@ -205,7 +232,14 @@ export class ModuleWatcher extends EventEmitter {
     if (stats?.isDirectory()) {
       // A directory appeared (or changed); pick up any modules inside it.
       const before = new Set(this.known);
-      this.scan(target);
+      for (const root of this.roots) {
+        if (this.isWithin(root, target)) {
+          this.scan(target);
+        } else if (this.isWithin(target, root)) {
+          this.watchDirectory(target);
+          this.scan(root);
+        }
+      }
       for (const discovered of this.known) {
         if (!before.has(discovered)) {
           this.dispatch('add', discovered);
@@ -249,6 +283,17 @@ export class ModuleWatcher extends EventEmitter {
     return this.extensions.has(extension)
       && (this.explicitFiles.has(target) || stem.endsWith(this.entrySuffix))
       && !this.isIgnored(target);
+  }
+
+  private isRelevant(target: string): boolean {
+    return this.dependencies.has(target)
+      || this.roots.some(root => this.isWithin(root, target) || this.isWithin(target, root));
+  }
+
+  private isWithin(parent: string, target: string): boolean {
+    const relative = path.relative(parent, target);
+    return relative === ''
+      || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
   }
 
   private isIgnored(target: string): boolean {

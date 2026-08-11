@@ -174,6 +174,30 @@ test('a new file dropped into a watched directory is loaded automatically', asyn
   }
 });
 
+test('a build output created after start is discovered and deployed automatically', async () => {
+  const workspace = await createWorkspace();
+  const buildModules = path.join(workspace.root, 'dist', 'modules');
+  const unrelatedModules = path.join(workspace.root, 'unrelated');
+  const { kernel } = createKernel(workspace, {
+    autonomous: { paths: [buildModules] }
+  });
+
+  await kernel.start();
+
+  try {
+    await mkdir(unrelatedModules, { recursive: true });
+    await writeFile(path.join(unrelatedModules, 'ignored.module.js'), moduleSource('ignored', '1.0.0', '/ignored'));
+    await mkdir(buildModules, { recursive: true });
+    await writeFile(path.join(buildModules, 'users.module.js'), moduleSource('users', '1.0.0', '/users'));
+
+    await waitFor(() => kernel.get('users') !== undefined);
+    assert.equal(kernel.get('users').module.version, '1.0.0');
+    assert.equal(kernel.get('ignored'), undefined);
+  } finally {
+    await kernel.stop();
+  }
+});
+
 test('deleting a module file unloads it and frees its routes', async () => {
   const workspace = await createWorkspace();
   await mkdir(workspace.modules, { recursive: true });
